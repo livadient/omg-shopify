@@ -14,6 +14,7 @@ class ProductMapping(BaseModel):
     source_title: str
     target_handle: str
     target_title: str
+    target_product_id: int
     variants: list[VariantMapping]
 
 

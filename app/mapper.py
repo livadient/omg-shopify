@@ -79,6 +79,7 @@ async def create_mapping_from_urls(
         source_title=source_product["title"],
         target_handle=target_product["handle"],
         target_title=target_product["title"],
+        target_product_id=target_product["id"],
         variants=variant_mappings,
     )
 

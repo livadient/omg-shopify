@@ -11,9 +11,8 @@ omg.com.cy (Shopify)  →  webhook: orders/create
         ↓
    FastAPI Service (this project)
    ├── Receive webhook
-   ├── Map OMG variant IDs → TShirtJunkies variant IDs
-   ├── POST to tshirtjunkies.co/cart/add.js (session-based)
-   └── Return checkout URL for human confirmation
+   ├── Map OMG variant IDs → TShirtJunkies variant/product IDs
+   └── Return Qstomizer URLs for each item (upload design + checkout)
 ```
 
 ## Tech Stack
@@ -35,8 +34,7 @@ omg.com.cy (Shopify)  →  webhook: orders/create
 |--------|------|---------|
 | `POST` | `/map-products?source_url=...&target_url=...` | Create mapping between two product URLs |
 | `GET` | `/mappings` | View all saved product mappings |
-| `POST` | `/webhook/order-created` | Shopify webhook handler — maps items, builds cart, returns checkout URL |
-| `POST` | `/test-cart?variant_id=...&quantity=...` | Test adding an item to TShirtJunkies cart |
+| `POST` | `/webhook/order-created` | Shopify webhook handler — maps items, returns Qstomizer URLs for customization |
 
 ## Product Mappings
 
@@ -53,6 +51,21 @@ Mappings are stored in `product_mappings.json` at the project root. Variants are
 - **TShirtJunkies:** `women-t-shirt` (€23)
 
 Note: OMG female EU edition only goes up to XL, which matches TJ perfectly.
+
+## Qstomizer (Product Customization)
+
+TShirtJunkies uses **Qstomizer** for custom design uploads. The webhook response includes a Qstomizer URL per item:
+
+```
+https://tshirtjunkies.co/apps/qstomizer/?qstomizer-product-id={PRODUCT_ID}
+```
+
+| Product | Qstomizer Product ID |
+|---------|---------------------|
+| Classic Tee (Male, up to 5XL) | `9864408301915` |
+| Women's T-Shirt | `8676301799771` |
+
+Flow: order webhook → service maps items → returns Qstomizer URLs → open link, upload design, select size, checkout.
 
 ## TShirtJunkies API Details
 
