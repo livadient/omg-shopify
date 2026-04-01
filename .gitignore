@@ -4,3 +4,5 @@ __pycache__/
 .idea/
 *.iml
 .env
+explore_qstomizer*.py
+runjar.txt
