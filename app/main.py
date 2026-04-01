@@ -1,17 +1,34 @@
-from fastapi import FastAPI, Request
+import logging
+from pathlib import Path
+
+from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+
+from fastapi.responses import HTMLResponse
 
 from app.config import settings
-from app.mapper import create_mapping_from_urls, load_mappings
+from app.email_parser import parse_order_email
+from app.email_service import send_order_notification
+from app.mapper import load_mappings
 from app.models import ProductMapping
+from app.omg_fulfillment import exchange_code_for_token, fulfill_order, parse_fulfillment_email
+from app.qstomizer_automation import customize_and_add_to_cart
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="OMG Shopify → TShirtJunkies Order Service")
 
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
 QSTOMIZER_URL = f"{settings.tshirtjunkies_base_url}/apps/qstomizer/"
+FRONT_DESIGN_IMAGE = STATIC_DIR / "front_design.png"
 
 
 @app.post("/map-products")
 async def map_products(source_url: str, target_url: str) -> ProductMapping:
     """Map a product from your store to a tshirtjunkies product by providing both URLs."""
+    from app.mapper import create_mapping_from_urls
     return await create_mapping_from_urls(source_url, target_url)
 
 
@@ -22,12 +39,15 @@ async def get_mappings() -> list[ProductMapping]:
 
 
 @app.post("/webhook/order-created")
-async def handle_order_created(request: Request) -> dict:
+async def handle_order_created(
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> dict:
     """Handle Shopify order/created webhook.
 
-    Receives order data, maps items to tshirtjunkies variants,
-    and returns Qstomizer customization URLs for each item
-    so the design image can be uploaded before checkout.
+    Maps items to tshirtjunkies variants, kicks off Playwright automation
+    in the background to customize and add to cart, then sends an email
+    notification with order details and cart links.
     """
     order = await request.json()
     config = load_mappings()
@@ -35,10 +55,12 @@ async def handle_order_created(request: Request) -> dict:
     # Build lookups from source variant ID
     variant_map: dict[int, int] = {}  # source_variant_id -> target_variant_id
     product_id_map: dict[int, int] = {}  # source_variant_id -> target_product_id
+    handle_map: dict[int, str] = {}  # source_variant_id -> source_handle
     for mapping in config.mappings:
         for v in mapping.variants:
             variant_map[v.source_variant_id] = v.target_variant_id
             product_id_map[v.source_variant_id] = mapping.target_product_id
+            handle_map[v.source_variant_id] = mapping.source_handle
 
     items_mapped = []
     items_skipped = []
@@ -62,6 +84,7 @@ async def handle_order_created(request: Request) -> dict:
                 "title": line_item.get("title", ""),
                 "variant_title": line_item.get("variant_title", ""),
                 "qstomizer_url": qstomizer_url,
+                "front_design_url": f"/static/{FRONT_DESIGN_IMAGE.name}",
             })
         else:
             items_skipped.append({
@@ -70,6 +93,15 @@ async def handle_order_created(request: Request) -> dict:
                 "reason": "no mapping found",
             })
 
+    # Kick off Playwright automation + email in background
+    if items_mapped:
+        background_tasks.add_task(
+            _process_order_background,
+            order=order,
+            items_mapped=items_mapped,
+            handle_map=handle_map,
+        )
+
     return {
         "status": "ok",
         "order_id": order.get("id"),
@@ -77,3 +109,478 @@ async def handle_order_created(request: Request) -> dict:
         "items_mapped": items_mapped,
         "items_skipped": items_skipped,
     }
+
+
+async def _process_order_background(
+    order: dict,
+    items_mapped: list[dict],
+    handle_map: dict[int, str],
+) -> None:
+    """Run Playwright automation for each item, then send email notification."""
+    order_number = order.get("order_number", order.get("id", "N/A"))
+    logger.info(f"Background processing started for order #{order_number}")
+
+    for item in items_mapped:
+        source_handle = handle_map.get(item["source_variant_id"], "")
+        product_type = "female" if "female" in source_handle else "male"
+        size = item["variant_title"]
+
+        # Extract shipping details from order
+        shipping_address = order.get("shipping_address") or {}
+        customer = order.get("customer", {})
+        shipping = {
+            "email": settings.email_sender,
+            "first_name": shipping_address.get("first_name", ""),
+            "last_name": f"{shipping_address.get('last_name', '')} (OMG #{order_number})",
+            "address1": shipping_address.get("address1", ""),
+            "address2": shipping_address.get("address2", ""),
+            "city": shipping_address.get("city", ""),
+            "country_code": shipping_address.get("country_code", ""),
+            "zip": shipping_address.get("zip", ""),
+            "phone": shipping_address.get("phone", ""),
+        }
+
+        try:
+            cart_url = await customize_and_add_to_cart(
+                product_type=product_type,
+                size=size,
+                color="White",
+                image_path=str(FRONT_DESIGN_IMAGE),
+                quantity=item["quantity"],
+                headless=True,
+                shipping=shipping,
+            )
+            item["cart_url"] = cart_url
+            logger.info(f"  {item['title']} ({size}) → {cart_url}")
+        except Exception as e:
+            logger.error(f"  Playwright failed for {item['title']} ({size}): {e}")
+            item["cart_url"] = None
+            item["error"] = str(e)
+
+    # Send email notification
+    customer = order.get("customer", {})
+    customer_name = (
+        f"{customer.get('first_name', '')} {customer.get('last_name', '')}".strip()
+        or "Unknown"
+    )
+    order_total = order.get("total_price", "N/A")
+    currency = order.get("currency", "EUR")
+
+    await send_order_notification(
+        order_number=order_number,
+        customer_name=customer_name,
+        order_total=order_total,
+        currency=currency,
+        items=items_mapped,
+    )
+
+    logger.info(f"Background processing complete for order #{order_number}")
+
+
+MANUAL_ORDER_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Manual Order — OMG → TShirtJunkies</title>
+    <style>
+        body { font-family: sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; }
+        h1 { font-size: 22px; }
+        textarea { width: 100%; height: 300px; font-family: monospace; font-size: 14px;
+                   padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; resize: vertical; }
+        textarea:focus { outline: none; border-color: #2563eb; }
+        button { margin-top: 12px; padding: 12px 32px; background: #2563eb; color: white;
+                 border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
+        button:hover { background: #1d4ed8; }
+        .hint { color: #6b7280; font-size: 13px; margin-top: 8px; }
+        #status { margin-top: 20px; padding: 16px; border-radius: 8px; display: none; }
+        .success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+        .error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+        .loading { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+    </style>
+</head>
+<body>
+    <h1>Manual Order — OMG → TShirtJunkies</h1>
+    <p>Paste the OMG order confirmation email text below and hit Submit.
+       The system will parse it, run the Playwright automation, and send you an email.</p>
+    <form id="form">
+        <textarea id="email_text" name="email_text" placeholder="Paste the OMG order email here...
+
+Order summary
+
+Astous na Laloun Graphic Tee Male — EU Edition × 1
+M
+€30,00
+...
+Shipping address
+Name
+Address
+Zip City
+Country"></textarea>
+        <br>
+        <label for="order_number" style="font-size:14px;font-weight:bold;">OMG Order # (optional):</label><br>
+        <input type="text" id="order_number" name="order_number" placeholder="e.g. 1001"
+               style="padding:8px 12px;border:2px solid #e5e7eb;border-radius:8px;font-size:14px;margin:4px 0 12px;">
+        <br>
+        <button type="submit">Submit Order</button>
+    </form>
+    <p class="hint">The automation runs in the background. You'll receive an email when it's done.</p>
+    <div id="status"></div>
+
+    <script>
+        document.getElementById('form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const status = document.getElementById('status');
+            const text = document.getElementById('email_text').value;
+            if (!text.trim()) return;
+
+            status.style.display = 'block';
+            status.className = 'loading';
+            status.textContent = 'Processing... parsing email and starting automation.';
+
+            try {
+                const res = await fetch('/manual-order', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        email_text: text,
+                        order_number: document.getElementById('order_number').value,
+                    }),
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    status.className = 'success';
+                    const items = data.items.map(i => `${i.title} (${i.variant_title}) x${i.quantity}`).join(', ');
+                    status.innerHTML = `<strong>Queued!</strong> ${items}<br>
+                        Shipping to: ${data.shipping.first_name} ${data.shipping.last_name},
+                        ${data.shipping.city}, ${data.shipping.country_code}<br>
+                        <em>You'll get an email when it's done.</em>`;
+                } else {
+                    status.className = 'error';
+                    status.textContent = 'Error: ' + (data.detail || JSON.stringify(data));
+                }
+            } catch (err) {
+                status.className = 'error';
+                status.textContent = 'Request failed: ' + err.message;
+            }
+        });
+    </script>
+</body>
+</html>
+"""
+
+
+@app.get("/manual-order", response_class=HTMLResponse)
+async def manual_order_form():
+    """Serve the manual order form page."""
+    return MANUAL_ORDER_HTML
+
+
+@app.post("/manual-order")
+async def manual_order_submit(
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Parse pasted OMG order email and run the Playwright automation."""
+    body = await request.json()
+    email_text = body.get("email_text", "")
+    order_number = body.get("order_number", "").strip() or "MANUAL"
+
+    parsed = parse_order_email(email_text)
+    items = parsed["items"]
+    shipping = parsed["shipping"]
+
+    if not items:
+        return {"status": "error", "detail": "Could not parse any items from the email text."}
+
+    # Determine Qstomizer URLs for each item
+    qstomizer_product_ids = {
+        "male": 9864408301915,
+        "female": 8676301799771,
+    }
+
+    items_for_processing = []
+    for item in items:
+        product_type = item["product_type"]
+        product_id = qstomizer_product_ids[product_type]
+        item["qstomizer_url"] = f"{QSTOMIZER_URL}?qstomizer-product-id={product_id}"
+        items_for_processing.append(item)
+
+    # Add email sender for checkout and OMG order ref to last name
+    shipping["email"] = settings.email_sender
+    if shipping.get("last_name"):
+        shipping["last_name"] = f"{shipping['last_name']} (OMG #{order_number})"
+
+    background_tasks.add_task(
+        _process_manual_order_background,
+        items=items_for_processing,
+        shipping=shipping,
+        total=parsed["total"],
+        order_number=order_number,
+    )
+
+    return {
+        "status": "ok",
+        "items": items,
+        "shipping": shipping,
+        "total": parsed["total"],
+    }
+
+
+async def _process_manual_order_background(
+    items: list[dict],
+    shipping: dict,
+    total: str,
+    order_number: str = "MANUAL",
+) -> None:
+    """Run Playwright automation for manually submitted order."""
+    customer_name = f"{shipping.get('first_name', '')} {shipping.get('last_name', '')}".strip()
+    logger.info(f"Manual order processing started for {customer_name}")
+
+    for item in items:
+        try:
+            cart_url = await customize_and_add_to_cart(
+                product_type=item["product_type"],
+                size=item["variant_title"],
+                color="White",
+                image_path=str(FRONT_DESIGN_IMAGE),
+                quantity=item["quantity"],
+                headless=True,
+                shipping=shipping,
+            )
+            item["cart_url"] = cart_url
+            logger.info(f"  {item['title']} ({item['variant_title']}) → {cart_url}")
+        except Exception as e:
+            logger.error(f"  Playwright failed for {item['title']}: {e}")
+            item["cart_url"] = None
+            item["error"] = str(e)
+
+    await send_order_notification(
+        order_number=order_number,
+        customer_name=customer_name,
+        order_total=total,
+        currency="",
+        items=items,
+    )
+
+    logger.info(f"Manual order processing complete for {customer_name}")
+
+
+FULFILL_ORDER_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fulfill OMG Order</title>
+    <style>
+        body { font-family: sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; }
+        h1 { font-size: 22px; }
+        textarea { width: 100%; height: 200px; font-family: monospace; font-size: 14px;
+                   padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; resize: vertical; }
+        textarea:focus { outline: none; border-color: #16a34a; }
+        input[type=text] { padding: 8px 12px; border: 2px solid #e5e7eb; border-radius: 8px;
+                          font-size: 14px; width: 300px; margin: 4px 0 12px; }
+        input:focus { outline: none; border-color: #16a34a; }
+        label { font-size: 14px; font-weight: bold; display: block; margin-top: 12px; }
+        button { margin-top: 16px; padding: 12px 32px; background: #16a34a; color: white;
+                 border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
+        button:hover { background: #15803d; }
+        .hint { color: #6b7280; font-size: 13px; margin-top: 4px; }
+        #status { margin-top: 20px; padding: 16px; border-radius: 8px; display: none; }
+        .success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+        .error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+        .loading { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+        .or-divider { margin: 20px 0; text-align: center; color: #9ca3af; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <h1>Fulfill OMG Order</h1>
+    <p>Paste the TShirtJunkies shipping/fulfillment email to auto-fulfill the matching OMG order,
+       or fill in the fields manually.</p>
+
+    <form id="form">
+        <label>Paste TShirtJunkies fulfillment email:</label>
+        <textarea id="email_text" placeholder="Paste the TShirtJunkies shipping email here...
+It will auto-extract the OMG order number and tracking info."></textarea>
+        <p class="hint">The email should contain the customer name with (OMG #1234) and tracking details.</p>
+
+        <button type="button" onclick="parseEmail()">Parse Email</button>
+
+        <div class="or-divider">— or fill in manually —</div>
+
+        <label>OMG Order #:</label>
+        <input type="text" id="order_number" placeholder="e.g. 1001">
+
+        <label>Tracking Number:</label>
+        <input type="text" id="tracking_number" placeholder="e.g. JD014600012345678901">
+
+        <label>Tracking URL:</label>
+        <input type="text" id="tracking_url" placeholder="e.g. https://track.dhl.com/..." style="width:100%;">
+
+        <label>Carrier:</label>
+        <input type="text" id="tracking_company" placeholder="e.g. DHL, Cyprus Post, ACS">
+
+        <br>
+        <button type="submit">Fulfill Order</button>
+    </form>
+
+    <div id="status"></div>
+
+    <script>
+        async function parseEmail() {
+            const text = document.getElementById('email_text').value;
+            if (!text.trim()) return;
+            try {
+                const res = await fetch('/fulfill-order/parse', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email_text: text}),
+                });
+                const data = await res.json();
+                if (data.omg_order_number) document.getElementById('order_number').value = data.omg_order_number;
+                if (data.tracking_number) document.getElementById('tracking_number').value = data.tracking_number;
+                if (data.tracking_url) document.getElementById('tracking_url').value = data.tracking_url;
+                if (data.tracking_company) document.getElementById('tracking_company').value = data.tracking_company;
+
+                const status = document.getElementById('status');
+                status.style.display = 'block';
+                status.className = 'success';
+                status.textContent = 'Parsed! Review the fields below and click Fulfill Order.';
+            } catch (err) {
+                const status = document.getElementById('status');
+                status.style.display = 'block';
+                status.className = 'error';
+                status.textContent = 'Parse failed: ' + err.message;
+            }
+        }
+
+        document.getElementById('form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const status = document.getElementById('status');
+            const order_number = document.getElementById('order_number').value.trim();
+            if (!order_number) { alert('OMG Order # is required'); return; }
+
+            status.style.display = 'block';
+            status.className = 'loading';
+            status.textContent = 'Fulfilling order #' + order_number + '...';
+
+            try {
+                const res = await fetch('/fulfill-order', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        order_number: order_number,
+                        tracking_number: document.getElementById('tracking_number').value,
+                        tracking_url: document.getElementById('tracking_url').value,
+                        tracking_company: document.getElementById('tracking_company').value,
+                    }),
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    status.className = 'success';
+                    status.innerHTML = '<strong>Fulfilled!</strong> OMG Order #' + data.order_number +
+                        (data.tracking_number ? ' — Tracking: ' + data.tracking_number : '') +
+                        '<br>Customer will be notified by Shopify.';
+                } else {
+                    status.className = 'error';
+                    status.textContent = 'Error: ' + (data.detail || JSON.stringify(data));
+                }
+            } catch (err) {
+                status.className = 'error';
+                status.textContent = 'Request failed: ' + err.message;
+            }
+        });
+    </script>
+</body>
+</html>
+"""
+
+
+@app.get("/fulfill-order", response_class=HTMLResponse)
+async def fulfill_order_form():
+    """Serve the fulfill order form page."""
+    return FULFILL_ORDER_HTML
+
+
+@app.post("/fulfill-order/parse")
+async def fulfill_order_parse(request: Request) -> dict:
+    """Parse a TShirtJunkies fulfillment email to extract order number and tracking."""
+    body = await request.json()
+    return parse_fulfillment_email(body.get("email_text", ""))
+
+
+@app.post("/fulfill-order")
+async def fulfill_order_submit(request: Request) -> dict:
+    """Fulfill an OMG order with tracking info."""
+    body = await request.json()
+    order_number = body.get("order_number", "").strip()
+    if not order_number:
+        return {"status": "error", "detail": "Order number is required"}
+
+    return await fulfill_order(
+        order_number=order_number,
+        tracking_number=body.get("tracking_number", ""),
+        tracking_url=body.get("tracking_url", ""),
+        tracking_company=body.get("tracking_company", ""),
+    )
+
+
+@app.get("/shopify-auth", response_class=HTMLResponse)
+async def shopify_auth_start():
+    """Redirect to Shopify OAuth to authorize the app."""
+    client_id = settings.omg_shopify_client_id
+    domain = settings.omg_shopify_domain
+    if not domain.endswith(".myshopify.com"):
+        domain = "52922c-2.myshopify.com"
+    scopes = "read_orders,write_fulfillments,read_products,write_products,read_customers,write_customers,read_inventory,write_inventory,read_shipping,write_shipping,read_order_edits,write_order_edits"
+    redirect_uri = "http://localhost:8080/shopify-auth/callback"
+    auth_url = (
+        f"https://{domain}/admin/oauth/authorize"
+        f"?client_id={client_id}"
+        f"&scope={scopes}"
+        f"&redirect_uri={redirect_uri}"
+    )
+    return f"""
+    <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;">
+        <h2>Authorize OMG Shopify App</h2>
+        <p>Click the button below to authorize this app to read orders and create fulfillments on your OMG store.</p>
+        <a href="{auth_url}" style="display:inline-block;padding:12px 32px;background:#2563eb;
+           color:white;text-decoration:none;border-radius:8px;font-size:16px;">Authorize on Shopify</a>
+        <p style="color:#6b7280;font-size:13px;margin-top:16px;">This is a one-time setup. After authorizing, you can use the fulfill-order endpoint.</p>
+    </body></html>
+    """
+
+
+@app.get("/shopify-auth/callback")
+async def shopify_auth_callback(code: str = "", shop: str = ""):
+    """Handle OAuth callback from Shopify, exchange code for token."""
+    if not code:
+        return {"status": "error", "detail": "No authorization code received"}
+
+    try:
+        token = await exchange_code_for_token(code)
+        return HTMLResponse(f"""
+        <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;">
+            <h2 style="color:#16a34a;">Authorized!</h2>
+            <p>Access token obtained successfully. The app can now read orders and create fulfillments.</p>
+            <p style="background:#f0fdf4;padding:12px;border-radius:8px;border:1px solid #bbf7d0;">
+                Token starts with: <code>{token[:12]}...</code>
+            </p>
+            <p style="color:#6b7280;font-size:13px;">
+                To make this permanent, add this to your <code>.env</code>:<br>
+                <code>OMG_SHOPIFY_ADMIN_TOKEN={token}</code>
+            </p>
+            <a href="/fulfill-order" style="color:#2563eb;">Go to Fulfill Order page</a>
+        </body></html>
+        """)
+    except Exception as e:
+        return HTMLResponse(f"""
+        <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;">
+            <h2 style="color:#dc2626;">Authorization Failed</h2>
+            <p>{e}</p>
+            <a href="/shopify-auth">Try again</a>
+        </body></html>
+        """)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8080, reload=True)
