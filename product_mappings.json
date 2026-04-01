@@ -1,0 +1,104 @@
+{
+  "mappings": [
+    {
+      "source_handle": "astous-na-laloun-graphic-tee-male-eu-edition",
+      "source_title": "Astous na Laloun Graphic Tee Male \u2014 EU Edition",
+      "target_handle": "classic-tee-up-to-5xl",
+      "target_title": "Classic Tee (up to 5XL)",
+      "variants": [
+        {
+          "source_variant_id": 56571785347452,
+          "source_title": "S",
+          "target_variant_id": 50461540614491,
+          "target_title": "S",
+          "target_price": "20.00"
+        },
+        {
+          "source_variant_id": 56571785380220,
+          "source_title": "M",
+          "target_variant_id": 50461540647259,
+          "target_title": "M",
+          "target_price": "20.00"
+        },
+        {
+          "source_variant_id": 56571785412988,
+          "source_title": "L",
+          "target_variant_id": 50461540680027,
+          "target_title": "L",
+          "target_price": "20.00"
+        },
+        {
+          "source_variant_id": 56571785445756,
+          "source_title": "XL",
+          "target_variant_id": 50461540712795,
+          "target_title": "XL",
+          "target_price": "20.00"
+        },
+        {
+          "source_variant_id": 56571785478524,
+          "source_title": "2XL",
+          "target_variant_id": 50461540745563,
+          "target_title": "2XL",
+          "target_price": "20.00"
+        },
+        {
+          "source_variant_id": 56571785511292,
+          "source_title": "3XL",
+          "target_variant_id": 50461540778331,
+          "target_title": "3XL",
+          "target_price": "22.00"
+        },
+        {
+          "source_variant_id": 56571785544060,
+          "source_title": "4XL",
+          "target_variant_id": 50461542056283,
+          "target_title": "4XL",
+          "target_price": "22.00"
+        },
+        {
+          "source_variant_id": 56571785576828,
+          "source_title": "5XL",
+          "target_variant_id": 50461542089051,
+          "target_title": "5XL",
+          "target_price": "22.00"
+        }
+      ]
+    },
+    {
+      "source_handle": "astous-na-laloun-graphic-tee-female-eu-edition",
+      "source_title": "Astous na Laloun Graphic Tee Female \u2014 EU Edition",
+      "target_handle": "women-t-shirt",
+      "target_title": "Women's T-Shirt",
+      "variants": [
+        {
+          "source_variant_id": 56571786199420,
+          "source_title": "S",
+          "target_variant_id": 47361096253787,
+          "target_title": "S",
+          "target_price": "23.00"
+        },
+        {
+          "source_variant_id": 56571786232188,
+          "source_title": "M",
+          "target_variant_id": 47361096286555,
+          "target_title": "M",
+          "target_price": "23.00"
+        },
+        {
+          "source_variant_id": 56571786264956,
+          "source_title": "L",
+          "target_variant_id": 47361096319323,
+          "target_title": "L",
+          "target_price": "23.00"
+        },
+        {
+          "source_variant_id": 56571786297724,
+          "source_title": "XL",
+          "target_variant_id": 47361096352091,
+          "target_title": "XL",
+          "target_price": "23.00"
+        }
+      ]
+    }
+  ]
+}
