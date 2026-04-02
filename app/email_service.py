@@ -16,6 +16,7 @@ async def send_order_notification(
     order_total: str,
     currency: str,
     items: list[dict],
+    shipping: dict | None = None,
 ) -> None:
     """Send an HTML email with order details and cart/Qstomizer links.
 
@@ -26,6 +27,7 @@ async def send_order_notification(
         currency: Currency code (e.g. "EUR")
         items: List of dicts, each with: title, variant_title, quantity,
                qstomizer_url, cart_url (may be None on error)
+        shipping: Customer shipping details dict (optional)
     """
     if not settings.email_recipients:
         logger.warning("No email recipients configured, skipping notification")
@@ -35,7 +37,7 @@ async def send_order_notification(
         return
 
     subject = f"New OMG Order #{order_number} — {customer_name}"
-    html = _build_html(order_number, customer_name, order_total, currency, items)
+    html = _build_html(order_number, customer_name, order_total, currency, items, shipping)
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
@@ -64,6 +66,7 @@ def _build_html(
     order_total: str,
     currency: str,
     items: list[dict],
+    shipping: dict | None = None,
 ) -> str:
     rows = ""
     for item in items:
@@ -104,11 +107,34 @@ def _build_html(
         </p>
         """
 
+    # Build shipping details block for easy copy-paste at checkout
+    shipping_html = ""
+    if shipping:
+        fields = [
+            ("Name", f"{shipping.get('first_name', '')} {shipping.get('last_name', '')}".strip()),
+            ("Address", shipping.get("address1", "")),
+            ("City", shipping.get("city", "")),
+            ("Zip", shipping.get("zip", "")),
+            ("Country", shipping.get("country_code", "")),
+            ("Phone", shipping.get("phone", "")),
+            ("Email", shipping.get("email", "")),
+        ]
+        rows = "".join(
+            f"<tr><td style='padding:4px 8px;color:#6b7280;'>{k}:</td>"
+            f"<td style='padding:4px 8px;font-weight:bold;'>{v}</td></tr>"
+            for k, v in fields if v
+        )
+        shipping_html = f"""
+        <div style="margin-top:16px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+            <strong style="font-size:14px;">Shipping Details (copy to TJ checkout):</strong>
+            <table style="margin-top:8px;">{rows}</table>
+        </div>"""
+
     return f"""
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
         <h2 style="color:#111;">New Order #{order_number}</h2>
         <p><strong>Customer:</strong> {customer_name}</p>
-        <p><strong>Total:</strong> {currency} {order_total}</p>
+        <p><strong>Total:</strong> {currency} {order_total}</p>{shipping_html}
         <table style="width:100%;border-collapse:collapse;margin-top:16px;">
             <thead>
                 <tr style="background:#f3f4f6;">

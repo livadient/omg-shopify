@@ -316,6 +316,7 @@ async def _process_order_background(
         order_total=order_total,
         currency=currency,
         items=items_mapped,
+        shipping=shipping,
     )
 
     logger.info(f"Background processing complete for order #{order_number}")
@@ -504,6 +505,7 @@ async def _process_manual_order_background(
         order_total=total,
         currency="",
         items=items,
+        shipping=shipping,
     )
 
     logger.info(f"Manual order processing complete for {customer_name}")

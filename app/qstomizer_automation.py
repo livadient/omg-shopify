@@ -392,27 +392,17 @@ async def _fill_checkout(page, shipping: dict) -> None:
             continue
         try:
             field = await page.wait_for_selector(selector, timeout=5000)
-            # Use React's native value setter + input event to update React state
-            await field.evaluate("""(el, val) => {
-                const setter = Object.getOwnPropertyDescriptor(
-                    window.HTMLInputElement.prototype, 'value'
-                ).set;
-                setter.call(el, val);
-                el.dispatchEvent(new Event('input', {bubbles: true}));
-                el.dispatchEvent(new Event('change', {bubbles: true}));
-                el.dispatchEvent(new Event('blur', {bubbles: true}));
-            }""", str(value))
-            await page.wait_for_timeout(500)
-            # Dismiss autocomplete dropdown if it appears
+            await field.click(click_count=3)
+            await field.type(str(value), delay=30)
+            await page.wait_for_timeout(300)
             await page.keyboard.press("Escape")
             await page.wait_for_timeout(200)
             print(f"  {key}: filled")
         except Exception as e:
             print(f"  {key}: failed ({e})")
 
-    # Tab out and wait for Shopify to autosave the checkout
     await page.keyboard.press("Tab")
-    await page.wait_for_timeout(3000)
+    await page.wait_for_timeout(2000)
 
     # Select shipping method based on country
     if country_code:
