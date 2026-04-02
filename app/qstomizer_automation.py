@@ -170,12 +170,8 @@ async def _customize_and_add_to_cart_impl(
         """)
         print(f"  Active color: {active_color}")
 
-        # Screenshot after color selection
         import time
-        color_preview_name = f"color_{product_type}_{color}_{int(time.time())}.png"
-        color_preview_path = STATIC_DIR / color_preview_name
-        await page.screenshot(path=str(color_preview_path), full_page=False)
-        print(f"  Color screenshot: {color_preview_path}")
+        color_preview_name = None  # no separate color screenshot (canvas always shows black)
 
         # --- Step 1: Upload the design image ---
         print(f"Uploading design: {image_path.name}")
@@ -228,11 +224,25 @@ async def _customize_and_add_to_cart_impl(
             await page.wait_for_timeout(500)
 
         # --- Step 3.5: Screenshot the customizer preview ---
-        import time
+        # Add a color/size label overlay so the screenshot is informative
+        await page.evaluate(f"""
+            () => {{
+                const label = document.createElement('div');
+                label.id = 'omg-preview-label';
+                label.textContent = 'Color: {color} | Size: {size} | Type: {product_type}';
+                label.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;' +
+                    'background:#16a34a;color:white;text-align:center;padding:8px;font-size:16px;' +
+                    'font-family:sans-serif;font-weight:bold;';
+                document.body.prepend(label);
+            }}
+        """)
+        await page.wait_for_timeout(500)
         preview_name = f"preview_{product_type}_{size}_{int(time.time())}.png"
         preview_path = STATIC_DIR / preview_name
         await page.screenshot(path=str(preview_path), full_page=False)
         print(f"  Preview screenshot: {preview_path}")
+        # Remove label
+        await page.evaluate("document.getElementById('omg-preview-label')?.remove()")
 
         # --- Step 4: Click ORDER NOW ---
         print("Clicking ORDER NOW...")
