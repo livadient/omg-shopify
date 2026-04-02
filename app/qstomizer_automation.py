@@ -220,6 +220,13 @@ async def _customize_and_add_to_cart_impl(
             await size_select.select_option(label=size)
             await page.wait_for_timeout(500)
 
+        # --- Step 3.5: Screenshot the customizer preview ---
+        import time
+        preview_name = f"preview_{product_type}_{size}_{int(time.time())}.png"
+        preview_path = STATIC_DIR / preview_name
+        await page.screenshot(path=str(preview_path), full_page=False)
+        print(f"  Preview screenshot: {preview_path}")
+
         # --- Step 4: Click ORDER NOW ---
         print("Clicking ORDER NOW...")
         await qf.evaluate("jQuery('#addtocart').trigger('click')")
@@ -351,7 +358,7 @@ async def _customize_and_add_to_cart_impl(
 
         await browser.close()
 
-    return {"checkout_url": checkout_url, "mockup_url": mockup_url}
+    return {"checkout_url": checkout_url, "mockup_url": mockup_url, "preview_name": preview_name}
 
 
 def _build_checkout_permalink(cart_data: dict, shipping: dict | None = None) -> str:
