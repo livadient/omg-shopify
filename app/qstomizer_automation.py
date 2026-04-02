@@ -332,7 +332,7 @@ async def _customize_and_add_to_cart_impl(
         if shipping:
             # Navigate to checkout if we landed on cart
             if "/cart" in current_url and "/checkout" not in current_url:
-                await page.goto("https://tshirtjunkies.co/checkout", wait_until="networkidle", timeout=30000)
+                await page.goto("https://tshirtjunkies.co/checkout", wait_until="domcontentloaded", timeout=60000)
                 await page.wait_for_timeout(3000)
 
             # Wait for checkout form to load
