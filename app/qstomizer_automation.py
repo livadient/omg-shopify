@@ -128,40 +128,55 @@ async def _customize_and_add_to_cart_impl(
         await qf.evaluate("document.getElementById('qsmzTextWindow').style.display = 'none'")
         await page.evaluate("document.querySelector('.shopify-section-header-sticky')?.remove()")
 
-        # --- Step 0: Select color ---
+        # --- Step 0: Select color + size via Colors/Size variations window ---
+        # This is the proper way — opens the variations window which has product
+        # image swatches that actually change the canvas (not just metadata).
+        print(f"Opening Colors/Size window...")
+        await qf.evaluate("jQuery('#btnvariations').trigger('click')")
+        await page.wait_for_timeout(2000)
+
+        # Click the color swatch (qsmzImageVariation) inside the variations window
         print(f"Selecting color: {color}")
-        # Qstomizer binds click via jQuery delegation:
-        #   $(".colorVariationCont").on("click", ".colorVarWrap", handler)
-        # The handler toggles colorVarWrapActive and calls Ka().
-        # We must trigger the click so it bubbles through jQuery's delegation.
         color_result = await qf.evaluate(f"""
             () => {{
                 const target = '{color}';
-                const swatches = document.querySelectorAll('.colorVarWrap');
+                const window = document.getElementById('qsmzVariationsWindow');
+                // Look for color swatches — they have data-colordes or image variations
+                const swatches = window.querySelectorAll('.colorVarWrap');
                 for (const swatch of swatches) {{
-                    if (swatch.getAttribute('data-colordes') === target) {{
-                        // Manually do what the delegated click handler does:
-                        // 1. Remove active from siblings, add to this
-                        const group = swatch.getAttribute('data-optiongroup');
-                        jQuery('.' + group).removeClass('colorVarWrapActive');
-                        jQuery(swatch).addClass('colorVarWrapActive');
-                        // 2. Clear the variant dropdown for this option
-                        const opt = swatch.getAttribute('data-option');
-                        jQuery('#variantValues' + opt).val('');
-                        // 3. Call Ka to update visual price (the key step)
-                        if (typeof Ka === 'function') Ka({{updateVisualPrice: false}});
-                        return 'selected: ' + target + ' (id=' + swatch.dataset.variationid + ')';
+                    const desc = swatch.getAttribute('data-colordes');
+                    if (desc === target) {{
+                        // Click the image variation inside (triggers changeVariant)
+                        const imgVar = swatch.querySelector('.qsmzImageVariation');
+                        if (imgVar) {{
+                            jQuery(imgVar).trigger('click');
+                            return 'clicked image variation: ' + desc;
+                        }}
+                        // Fallback: click the swatch itself
+                        jQuery(swatch).trigger('click');
+                        return 'clicked swatch: ' + desc;
                     }}
                 }}
                 return 'color_not_found: ' + target;
             }}
         """)
         print(f"  {color_result}")
-
-        # Wait for color change to take effect (canvas reloads the product image)
+        # Wait for canvas to update with the new color
         await page.wait_for_timeout(5000)
 
-        # Verify color was actually selected
+        # Select size in the variations window dropdown
+        print(f"Selecting size: {size}")
+        size_select = await qf.query_selector("#qsmzVariationsWindow #variantValues1")
+        if size_select:
+            await size_select.select_option(label=size)
+            await page.wait_for_timeout(500)
+
+        # Click OK to confirm color/size selection
+        print("Clicking OK...")
+        await qf.evaluate("jQuery('#btnselectvariant').trigger('click')")
+        await page.wait_for_timeout(3000)
+
+        # Verify color was applied
         active_color = await qf.evaluate("""
             () => {
                 const active = document.querySelector('.colorVarWrapActive');
@@ -171,7 +186,6 @@ async def _customize_and_add_to_cart_impl(
         print(f"  Active color: {active_color}")
 
         import time
-        color_preview_name = None  # no separate color screenshot (canvas always shows black)
 
         # --- Step 1: Upload the design image ---
         print(f"Uploading design: {image_path.name}")
