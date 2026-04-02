@@ -1,5 +1,12 @@
+import asyncio
 import logging
+import sys
 from pathlib import Path
+
+# Windows needs ProactorEventLoop for Playwright subprocess support.
+# Must be set at module level so it applies in uvicorn's reloaded worker process.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
@@ -681,13 +688,12 @@ async def print_endpoints():
 
 
 if __name__ == "__main__":
-    import asyncio
-    import sys
-
     import uvicorn
 
-    # Windows needs ProactorEventLoop for Playwright subprocess support
-    if sys.platform == "win32":
-        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-
-    uvicorn.run("app.main:app", host="0.0.0.0", port=settings.port, reload=True)
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=settings.port,
+        reload=True,
+        loop="asyncio",
+    )

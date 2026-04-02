@@ -92,6 +92,18 @@ def _build_html(
             <td style="padding:8px;border-bottom:1px solid #e5e7eb;">{link}</td>
         </tr>"""
 
+    manual_order_url = f"http://40.81.137.193:{settings.port}/manual-order"
+    has_errors = any(item.get("error") for item in items)
+    manual_order_note = ""
+    if has_errors:
+        manual_order_note = f"""
+        <p style="margin-top:16px;padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#991b1b;font-size:14px;">
+            <strong>Some items failed automation.</strong> Use the
+            <a href="{manual_order_url}" style="color:#2563eb;font-weight:bold;">Manual Order page</a>
+            to retry them.
+        </p>
+        """
+
     return f"""
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
         <h2 style="color:#111;">New Order #{order_number}</h2>
@@ -107,10 +119,11 @@ def _build_html(
                 </tr>
             </thead>
             <tbody>{rows}</tbody>
-        </table>
+        </table>{manual_order_note}
         <p style="margin-top:24px;color:#6b7280;font-size:13px;">
             Cart links open TShirtJunkies with the customized item ready for checkout.
-            If the automated link failed, use the manual Qstomizer link to upload the design.
+            If the automated link failed, use the manual Qstomizer link to upload the design,
+            or go to the <a href="{manual_order_url}" style="color:#2563eb;">Manual Order page</a>.
         </p>
     </div>
     """
