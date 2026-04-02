@@ -328,34 +328,75 @@ async def _customize_and_add_to_cart_impl(
         current_url = page.url
         print(f"After add-to-cart URL: {current_url}")
 
-        # --- Step 8: Fill in checkout shipping details ---
-        if shipping:
-            # Navigate to checkout if we landed on cart
-            if "/cart" in current_url and "/checkout" not in current_url:
-                await page.goto("https://tshirtjunkies.co/checkout", wait_until="domcontentloaded", timeout=60000)
-                await page.wait_for_timeout(3000)
-
-            # Wait for checkout form to load
-            try:
-                await page.wait_for_selector("input[name='email']", timeout=15000)
-            except Exception:
-                print("Warning: Checkout form not found, skipping shipping fill")
-                shipping = None
-
-        if shipping:
-            print("Filling in shipping details...")
-            await _fill_checkout(page, shipping)
-            current_url = page.url
+        # --- Step 8: Build shareable cart permalink with pre-filled checkout ---
+        # Fetch cart contents to get Qstomizer properties
+        print("Building shareable checkout link...")
+        cart_data = await page.evaluate("fetch('/cart.js').then(r => r.json())")
+        checkout_url = _build_checkout_permalink(cart_data, shipping)
+        print(f"Checkout permalink: {checkout_url}")
 
         # Take screenshot
         screenshot_path = STATIC_DIR / "checkout_result.png"
         await page.screenshot(path=str(screenshot_path), full_page=True)
         print(f"Screenshot saved: {screenshot_path}")
-        print(f"Final URL: {current_url}")
 
         await browser.close()
 
-    return current_url
+    return checkout_url
+
+
+def _build_checkout_permalink(cart_data: dict, shipping: dict | None = None) -> str:
+    """Build a shareable Shopify cart permalink with pre-filled checkout fields.
+
+    Uses the /cart/VARIANT:QTY format which works across browsers/devices.
+    Appends checkout[shipping_address] params to pre-fill the form.
+    """
+    from urllib.parse import urlencode, quote
+
+    base = "https://tshirtjunkies.co"
+
+    # Build cart items part: /cart/variant_id:qty,variant_id:qty
+    items_part = ",".join(
+        f"{item['variant_id']}:{item['quantity']}"
+        for item in cart_data.get("items", [])
+    )
+    if not items_part:
+        return f"{base}/cart"
+
+    # Build checkout pre-fill params
+    params = {}
+    if shipping:
+        field_map = {
+            "email": "checkout[email]",
+            "first_name": "checkout[shipping_address][first_name]",
+            "last_name": "checkout[shipping_address][last_name]",
+            "address1": "checkout[shipping_address][address1]",
+            "address2": "checkout[shipping_address][address2]",
+            "city": "checkout[shipping_address][city]",
+            "zip": "checkout[shipping_address][zip]",
+            "country_code": "checkout[shipping_address][country]",
+            "phone": "checkout[shipping_address][phone]",
+        }
+        for key, param_name in field_map.items():
+            value = shipping.get(key, "")
+            if value:
+                params[param_name] = value
+
+    # Add Qstomizer line item properties
+    # Format: attributes[_customorderid]=XXX for cart-level,
+    # or use /cart/add endpoint for per-item properties
+    for i, item in enumerate(cart_data.get("items", [])):
+        props = item.get("properties", {})
+        for prop_key, prop_value in props.items():
+            if prop_value:
+                params[f"attributes[{prop_key}]"] = str(prop_value)
+
+    query = urlencode(params) if params else ""
+    url = f"{base}/cart/{items_part}"
+    if query:
+        url += f"?{query}"
+
+    return url
 
 
 async def _fill_checkout(page, shipping: dict) -> None:
