@@ -398,13 +398,19 @@ async def _fill_checkout(page, shipping: dict) -> None:
             # Dismiss autocomplete dropdown if it appears
             await page.keyboard.press("Escape")
             await page.wait_for_timeout(200)
+            # Blur the field to trigger Shopify's autosave
+            await field.evaluate("""el => {
+                el.dispatchEvent(new Event('change', {bubbles: true}));
+                el.dispatchEvent(new Event('blur', {bubbles: true}));
+            }""")
+            await page.wait_for_timeout(300)
             print(f"  {key}: filled")
         except Exception as e:
             print(f"  {key}: failed ({e})")
 
-    # Tab out of last field to trigger validation
+    # Tab out and wait for Shopify to autosave the checkout
     await page.keyboard.press("Tab")
-    await page.wait_for_timeout(2000)
+    await page.wait_for_timeout(3000)
 
     # Select shipping method based on country
     if country_code:
