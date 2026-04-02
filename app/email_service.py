@@ -110,7 +110,7 @@ def _build_html(
     # Build shipping details block for easy copy-paste at checkout
     shipping_html = ""
     if shipping:
-        fields = [
+        ship_fields = [
             ("Name", f"{shipping.get('first_name', '')} {shipping.get('last_name', '')}".strip()),
             ("Address", shipping.get("address1", "")),
             ("City", shipping.get("city", "")),
@@ -119,15 +119,15 @@ def _build_html(
             ("Phone", shipping.get("phone", "")),
             ("Email", shipping.get("email", "")),
         ]
-        rows = "".join(
+        ship_rows = "".join(
             f"<tr><td style='padding:4px 8px;color:#6b7280;'>{k}:</td>"
             f"<td style='padding:4px 8px;font-weight:bold;'>{v}</td></tr>"
-            for k, v in fields if v
+            for k, v in ship_fields if v
         )
         shipping_html = f"""
         <div style="margin-top:16px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
             <strong style="font-size:14px;">Shipping Details (copy to TJ checkout):</strong>
-            <table style="margin-top:8px;">{rows}</table>
+            <table style="margin-top:8px;">{ship_rows}</table>
         </div>"""
 
     return f"""
