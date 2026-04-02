@@ -285,7 +285,7 @@ async def _process_order_background(
         }
 
         try:
-            cart_url = await customize_and_add_to_cart(
+            result = await customize_and_add_to_cart(
                 product_type=product_type,
                 size=size,
                 color="White",
@@ -294,8 +294,11 @@ async def _process_order_background(
                 headless=True,
                 shipping=shipping,
             )
-            item["cart_url"] = cart_url
-            logger.info(f"  {item['title']} ({size}) → {cart_url}")
+            item["cart_url"] = result["checkout_url"]
+            item["mockup_url"] = result.get("mockup_url")
+            logger.info(f"  {item['title']} ({size}) → {item['cart_url']}")
+            if item["mockup_url"]:
+                logger.info(f"  Mockup: {item['mockup_url']}")
         except Exception as e:
             logger.error(f"  Playwright failed for {item['title']} ({size}): {e}")
             item["cart_url"] = None
@@ -483,7 +486,7 @@ async def _process_manual_order_background(
 
     for item in items:
         try:
-            cart_url = await customize_and_add_to_cart(
+            result = await customize_and_add_to_cart(
                 product_type=item["product_type"],
                 size=item["variant_title"],
                 color="White",
@@ -492,8 +495,11 @@ async def _process_manual_order_background(
                 headless=True,
                 shipping=shipping,
             )
-            item["cart_url"] = cart_url
-            logger.info(f"  {item['title']} ({item['variant_title']}) → {cart_url}")
+            item["cart_url"] = result["checkout_url"]
+            item["mockup_url"] = result.get("mockup_url")
+            logger.info(f"  {item['title']} ({item['variant_title']}) → {item['cart_url']}")
+            if item["mockup_url"]:
+                logger.info(f"  Mockup: {item['mockup_url']}")
         except Exception as e:
             logger.error(f"  Playwright failed for {item['title']}: {e}")
             item["cart_url"] = None

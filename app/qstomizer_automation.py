@@ -335,6 +335,15 @@ async def _customize_and_add_to_cart_impl(
         checkout_url = _build_checkout_permalink(cart_data, shipping)
         print(f"Checkout permalink: {checkout_url}")
 
+        # Extract Qstomizer mockup image URL
+        mockup_url = None
+        for item in cart_data.get("items", []):
+            props = item.get("properties", {})
+            mockup_url = props.get("_customimagefront") or props.get("Custom Image:")
+            if mockup_url:
+                print(f"Mockup image: {mockup_url}")
+                break
+
         # Take screenshot
         screenshot_path = STATIC_DIR / "checkout_result.png"
         await page.screenshot(path=str(screenshot_path), full_page=True)
@@ -342,7 +351,7 @@ async def _customize_and_add_to_cart_impl(
 
         await browser.close()
 
-    return checkout_url
+    return {"checkout_url": checkout_url, "mockup_url": mockup_url}
 
 
 def _build_checkout_permalink(cart_data: dict, shipping: dict | None = None) -> str:
@@ -588,4 +597,6 @@ if __name__ == "__main__":
         color=color,
         headless=False,
     ))
-    print(f"\nDone! URL: {result}")
+    print(f"\nDone! Checkout: {result['checkout_url']}")
+    if result.get("mockup_url"):
+        print(f"Mockup: {result['mockup_url']}")
