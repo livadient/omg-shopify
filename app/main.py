@@ -1,12 +1,5 @@
-import asyncio
 import logging
-import sys
 from pathlib import Path
-
-# Windows needs ProactorEventLoop for Playwright subprocess support.
-# Must be set at module level so it applies in uvicorn's reloaded worker process.
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
@@ -43,6 +36,130 @@ async def map_products(source_url: str, target_url: str) -> ProductMapping:
 async def get_mappings() -> list[ProductMapping]:
     """List all product mappings."""
     return load_mappings().mappings
+
+
+TEST_WEBHOOK_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Webhook</title>
+    <style>
+        body { font-family: sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; }
+        h1 { font-size: 22px; }
+        label { font-size: 14px; font-weight: bold; display: block; margin-top: 12px; }
+        select, input { padding: 8px 12px; border: 2px solid #e5e7eb; border-radius: 8px;
+                       font-size: 14px; margin: 4px 0 8px; }
+        button { margin-top: 16px; padding: 12px 32px; background: #9333ea; color: white;
+                 border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
+        button:hover { background: #7e22ce; }
+        .hint { color: #6b7280; font-size: 13px; }
+        #status { margin-top: 20px; padding: 16px; border-radius: 8px; display: none; }
+        .success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+        .error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+        .loading { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+    </style>
+</head>
+<body>
+    <h1>Test Webhook (Fake Order)</h1>
+    <p>Send a fake <code>orders/create</code> webhook to test the full automation flow
+       without placing a real order.</p>
+    <form id="form">
+        <label>Product:</label>
+        <select id="product_type">
+            <option value="male">Male Tee (Classic Tee up to 5XL)</option>
+            <option value="female">Female Tee (Women's T-Shirt)</option>
+        </select>
+        <label>Size:</label>
+        <select id="size">
+            <option>S</option><option selected>M</option><option>L</option>
+            <option>XL</option><option>2XL</option><option>3XL</option>
+            <option>4XL</option><option>5XL</option>
+        </select>
+        <label>Quantity:</label>
+        <input type="number" id="qty" value="1" min="1" max="10" style="width:80px;">
+        <label>Customer Name:</label>
+        <input type="text" id="customer_name" value="Test Customer" style="width:300px;">
+        <br>
+        <button type="submit">Send Test Webhook</button>
+    </form>
+    <p class="hint">This posts a fake order to <code>/webhook/order-created</code> using real variant IDs
+       from your mappings. Playwright will run and you'll get an email.</p>
+    <div id="status"></div>
+    <script>
+        const VARIANT_MAP = %VARIANT_MAP%;
+        document.getElementById('product_type').addEventListener('change', function() {
+            const sizeSelect = document.getElementById('size');
+            const sizes = Object.keys(VARIANT_MAP[this.value]);
+            sizeSelect.innerHTML = sizes.map(s => '<option>' + s + '</option>').join('');
+        });
+        document.getElementById('form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const status = document.getElementById('status');
+            const type = document.getElementById('product_type').value;
+            const size = document.getElementById('size').value;
+            const qty = parseInt(document.getElementById('qty').value);
+            const name = document.getElementById('customer_name').value.split(' ');
+            const variant = VARIANT_MAP[type][size];
+            if (!variant) { alert('No mapping for ' + type + ' ' + size); return; }
+            status.style.display = 'block';
+            status.className = 'loading';
+            status.textContent = 'Sending test webhook...';
+            const order = {
+                id: Date.now(), order_number: 'TEST-' + Date.now(),
+                line_items: [{
+                    variant_id: variant.source, quantity: qty,
+                    title: type === 'male' ? 'Astous na Laloun Graphic Tee Male - EU Edition'
+                                           : 'Astous na Laloun Graphic Tee Female - EU Edition',
+                    variant_title: size,
+                }],
+                customer: { first_name: name[0] || 'Test', last_name: name.slice(1).join(' ') || 'Customer' },
+                shipping_address: {
+                    first_name: name[0] || 'Test', last_name: name.slice(1).join(' ') || 'Customer',
+                    address1: '123 Test Street', city: 'Nicosia', country_code: 'CY', zip: '1000',
+                },
+                total_price: '30.00', currency: 'EUR',
+            };
+            try {
+                const res = await fetch('/webhook/order-created', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(order),
+                });
+                const data = await res.json();
+                if (data.items_mapped && data.items_mapped.length > 0) {
+                    status.className = 'success';
+                    status.innerHTML = '<strong>Sent!</strong> Order #' + data.order_number +
+                        '<br>Mapped: ' + data.items_mapped.map(i => i.title + ' (' + i.variant_title + ')').join(', ') +
+                        '<br><em>Playwright is running in the background. Check your email.</em>';
+                } else {
+                    status.className = 'error';
+                    status.textContent = 'No items mapped: ' + JSON.stringify(data.items_skipped);
+                }
+            } catch (err) {
+                status.className = 'error';
+                status.textContent = 'Failed: ' + err.message;
+            }
+        });
+    </script>
+</body>
+</html>
+"""
+
+
+@app.get("/test-webhook", response_class=HTMLResponse)
+async def test_webhook_form():
+    """Serve a form to send a fake webhook for testing."""
+    import json
+    config = load_mappings()
+    # Build variant map: {product_type: {size: {source: id, target: id}}}
+    variant_map = {"male": {}, "female": {}}
+    for mapping in config.mappings:
+        ptype = "female" if "female" in mapping.source_handle else "male"
+        for v in mapping.variants:
+            variant_map[ptype][v.source_title] = {
+                "source": v.source_variant_id,
+                "target": v.target_variant_id,
+            }
+    return TEST_WEBHOOK_HTML.replace("%VARIANT_MAP%", json.dumps(variant_map))
 
 
 @app.middleware("http")
@@ -678,6 +795,7 @@ async def print_endpoints():
     print("=" * 50)
     print("  OMG Shopify → TShirtJunkies Service")
     print("=" * 50)
+    print(f"  Test Webhook:    {base}/test-webhook")
     print(f"  Manual Order:    {base}/manual-order")
     print(f"  Fulfill Order:   {base}/fulfill-order")
     print(f"  Shopify Auth:    {base}/shopify-auth")

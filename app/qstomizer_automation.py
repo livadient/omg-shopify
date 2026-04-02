@@ -1,8 +1,28 @@
 """Automate Qstomizer: upload design image, select size, and add to cart."""
 import asyncio
+import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from playwright.async_api import async_playwright
+
+_playwright_executor = ThreadPoolExecutor(max_workers=2)
+
+
+# Map OMG shipping methods to TShirtJunkies checkout shipping options.
+# Key: country code -> preferred TJ shipping method name (substring match on label text).
+# TJ checkout shows shipping options after address is filled; we pick the best match.
+#
+# OMG EU edition profile -> TJ checkout:
+#   CY: Travel Express EUR 3  -> TJ: Travel Express EUR 3 (must select; not first)
+#   GR: Geniki Taxydromiki EUR 5 -> TJ: Geniki pickup EUR 5 (auto-selected, first option)
+#   FR: Europe postal EUR 6   -> TJ: Postal Shipping EUR 5 (auto-selected, only option)
+SHIPPING_METHOD_MAP = {
+    "CY": "Travel Express",
+    "GR": "Geniki",             # first option, auto-selected
+    "FR": "Postal",             # only option, auto-selected
+}
+# Fallback: keep the default (first/cheapest) option for unmapped countries
 
 QSTOMIZER_URLS = {
     "male": "https://tshirtjunkies.co/apps/qstomizer/?qstomizer-product-id=9864408301915",
@@ -11,6 +31,28 @@ QSTOMIZER_URLS = {
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 DEFAULT_IMAGE = STATIC_DIR / "front_design.png"
+
+
+def _run_playwright_in_thread(coro_func, *args, **kwargs):
+    """Run an async Playwright function in a separate thread with ProactorEventLoop.
+
+    Uvicorn on Windows uses SelectorEventLoop which doesn't support subprocesses.
+    Playwright needs subprocess support, so we run it in its own thread/loop.
+    """
+    def _thread_target():
+        if sys.platform == "win32":
+            loop = asyncio.ProactorEventLoop()
+        else:
+            loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro_func(*args, **kwargs))
+        finally:
+            loop.close()
+
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(_thread_target)
+        return future.result()
 
 
 async def customize_and_add_to_cart(
@@ -25,20 +67,35 @@ async def customize_and_add_to_cart(
     """Open Qstomizer, upload design, select color and size, add to cart,
     and optionally fill in checkout shipping details.
 
-    Args:
-        product_type: "male" or "female"
-        size: Size label matching the dropdown (XS, S, M, L, XL, 2XL, 3XL, 4XL, 5XL)
-        color: Color name (Black, Navy Blue, Red, Royal Blue, Sport Grey, White)
-        image_path: Path to the design image (PNG/JPG)
-        quantity: Number of items
-        headless: Run browser without GUI
-        shipping: Customer shipping details dict with keys:
-            email, first_name, last_name, address1, address2, city,
-            country_code, zip, phone
-
-    Returns:
-        The checkout URL after adding to cart (with shipping pre-filled if provided).
+    Runs Playwright in a separate thread with ProactorEventLoop on Windows
+    to avoid uvicorn's SelectorEventLoop subprocess limitation.
     """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        _playwright_executor,
+        lambda: _run_playwright_in_thread(
+            _customize_and_add_to_cart_impl,
+            product_type=product_type,
+            size=size,
+            color=color,
+            image_path=image_path,
+            quantity=quantity,
+            headless=headless,
+            shipping=shipping,
+        ),
+    )
+
+
+async def _customize_and_add_to_cart_impl(
+    product_type: str = "male",
+    size: str = "L",
+    color: str = "White",
+    image_path: Path | str = DEFAULT_IMAGE,
+    quantity: int = 1,
+    headless: bool = False,
+    shipping: dict | None = None,
+) -> str:
+    """Actual Playwright implementation."""
     image_path = Path(image_path).resolve()
     if not image_path.exists():
         raise FileNotFoundError(f"Design image not found: {image_path}")
@@ -73,26 +130,45 @@ async def customize_and_add_to_cart(
 
         # --- Step 0: Select color ---
         print(f"Selecting color: {color}")
+        # Qstomizer binds click via jQuery delegation:
+        #   $(".colorVariationCont").on("click", ".colorVarWrap", handler)
+        # The handler toggles colorVarWrapActive and calls Ka().
+        # We must trigger the click so it bubbles through jQuery's delegation.
         color_result = await qf.evaluate(f"""
             () => {{
                 const target = '{color}';
                 const swatches = document.querySelectorAll('.colorVarWrap');
                 for (const swatch of swatches) {{
-                    const name = swatch.querySelector('.colorVarDesc')?.textContent?.trim();
-                    if (name === target) {{
-                        if (typeof jQuery !== 'undefined') {{
-                            jQuery(swatch).trigger('click');
-                        }} else {{
-                            swatch.click();
-                        }}
-                        return 'selected: ' + name;
+                    if (swatch.getAttribute('data-colordes') === target) {{
+                        // Manually do what the delegated click handler does:
+                        // 1. Remove active from siblings, add to this
+                        const group = swatch.getAttribute('data-optiongroup');
+                        jQuery('.' + group).removeClass('colorVarWrapActive');
+                        jQuery(swatch).addClass('colorVarWrapActive');
+                        // 2. Clear the variant dropdown for this option
+                        const opt = swatch.getAttribute('data-option');
+                        jQuery('#variantValues' + opt).val('');
+                        // 3. Call Ka to update visual price (the key step)
+                        if (typeof Ka === 'function') Ka({{updateVisualPrice: false}});
+                        return 'selected: ' + target + ' (id=' + swatch.dataset.variationid + ')';
                     }}
                 }}
                 return 'color_not_found: ' + target;
             }}
         """)
         print(f"  {color_result}")
-        await page.wait_for_timeout(2000)
+
+        # Wait for color change to take effect (canvas reloads the product image)
+        await page.wait_for_timeout(5000)
+
+        # Verify color was actually selected
+        active_color = await qf.evaluate("""
+            () => {
+                const active = document.querySelector('.colorVarWrapActive');
+                return active ? (active.getAttribute('data-colordes') || 'unknown') : 'no_active';
+            }
+        """)
+        print(f"  Active color: {active_color}")
 
         # --- Step 1: Upload the design image ---
         print(f"Uploading design: {image_path.name}")
@@ -284,15 +360,30 @@ async def customize_and_add_to_cart(
 
 async def _fill_checkout(page, shipping: dict) -> None:
     """Fill in the Shopify checkout form with customer shipping details."""
+
+    # Select country first (affects available fields and address autocomplete)
+    country_code = shipping.get("country_code", "")
+    if country_code:
+        try:
+            country_select = await page.wait_for_selector(
+                "select[name='countryCode']", timeout=5000
+            )
+            await country_select.select_option(value=country_code)
+            await page.wait_for_timeout(1500)
+            print(f"  country: {country_code}")
+        except Exception as e:
+            print(f"  country: failed ({e})")
+
+    # Fill fields using type() instead of fill() for React compatibility
     field_map = {
         "email": "input[name='email']",
-        "first_name": "input[name='firstName'][id^='TextField']",
-        "last_name": "input[name='lastName'][id^='TextField']",
-        "address1": "input[name='address1'][id='shipping-address1']",
-        "address2": "input[name='address2'][id^='TextField']",
+        "first_name": "input[name='firstName']",
+        "last_name": "input[name='lastName']",
+        "address1": "input[name='address1']",
+        "address2": "input[name='address2']",
         "city": "input[name='city']",
-        "zip": "input[name='postalCode'][id^='TextField']",
-        "phone": "input[name='phone'][id^='TextField']",
+        "zip": "input[name='postalCode']",
+        "phone": "input[name='phone']",
     }
 
     for key, selector in field_map.items():
@@ -301,27 +392,102 @@ async def _fill_checkout(page, shipping: dict) -> None:
             continue
         try:
             field = await page.wait_for_selector(selector, timeout=5000)
-            await field.click()
-            await field.fill(str(value))
+            await field.click(click_count=3)  # select all existing text
+            await field.type(str(value), delay=30)  # type char by char for React
             await page.wait_for_timeout(300)
+            # Dismiss autocomplete dropdown if it appears
+            await page.keyboard.press("Escape")
+            await page.wait_for_timeout(200)
             print(f"  {key}: filled")
         except Exception as e:
             print(f"  {key}: failed ({e})")
 
-    # Select country
-    country_code = shipping.get("country_code", "")
+    # Tab out of last field to trigger validation
+    await page.keyboard.press("Tab")
+    await page.wait_for_timeout(2000)
+
+    # Select shipping method based on country
     if country_code:
-        try:
-            country_select = await page.wait_for_selector(
-                "select[name='countryCode']", timeout=5000
-            )
-            await country_select.select_option(value=country_code)
-            await page.wait_for_timeout(1000)
-            print(f"  country: {country_code}")
-        except Exception as e:
-            print(f"  country: failed ({e})")
+        await _select_shipping_method(page, country_code)
 
     print("Shipping details filled (stopping before payment)")
+
+
+async def _select_shipping_method(page, country_code: str) -> None:
+    """Select the appropriate shipping method at TJ checkout based on country."""
+    preferred = SHIPPING_METHOD_MAP.get(country_code, "")
+    print(f"  Selecting shipping method for {country_code} (preferred: {preferred or 'cheapest'})...")
+
+    # Wait for shipping methods to appear (they load dynamically after address validates)
+    shipping_found = False
+    for attempt in range(3):
+        await page.wait_for_timeout(3000)
+        # Check if shipping options are visible
+        count = await page.evaluate("""
+            () => {
+                const radios = document.querySelectorAll('input[type="radio"]');
+                const labels = document.querySelectorAll('[role="radio"]');
+                return radios.length + labels.length;
+            }
+        """)
+        if count > 0:
+            shipping_found = True
+            break
+        print(f"  Waiting for shipping methods (attempt {attempt + 1})...")
+
+    if not shipping_found:
+        print("  Warning: No shipping methods found")
+        return
+
+    # List available methods and select preferred one
+    result = await page.evaluate(f"""
+        () => {{
+            const preferred = '{preferred}'.toLowerCase();
+            const methods = [];
+
+            // Shopify checkout: radio inputs with labels
+            const radios = document.querySelectorAll('input[type="radio"]');
+            for (const radio of radios) {{
+                const label = document.querySelector('label[for="' + radio.id + '"]');
+                if (!label) continue;
+                const text = label.textContent.trim();
+                // Skip non-shipping radios (payment methods etc)
+                if (text.includes('Credit') || text.includes('PayPal') || text.includes('card'))
+                    continue;
+                methods.push({{id: radio.id, text: text, el: radio}});
+            }}
+
+            // Also check role="radio" elements (newer Shopify checkout)
+            const roleRadios = document.querySelectorAll('[role="radio"]');
+            for (const rr of roleRadios) {{
+                const text = rr.textContent.trim();
+                if (text.includes('Credit') || text.includes('PayPal') || text.includes('card'))
+                    continue;
+                if (!methods.some(m => m.text === text)) {{
+                    methods.push({{id: rr.id, text: text, el: rr}});
+                }}
+            }}
+
+            if (methods.length === 0) return 'no_shipping_methods_found';
+
+            const listing = methods.map(m => m.text.substring(0, 60)).join(' | ');
+
+            // Try to match preferred method
+            if (preferred) {{
+                for (const m of methods) {{
+                    if (m.text.toLowerCase().includes(preferred)) {{
+                        m.el.click();
+                        return 'selected: ' + m.text.substring(0, 80) + ' [from: ' + listing + ']';
+                    }}
+                }}
+            }}
+
+            // Fallback: pick first (usually cheapest)
+            methods[0].el.click();
+            return 'fallback: ' + methods[0].text.substring(0, 80) + ' [from: ' + listing + ']';
+        }}
+    """)
+    print(f"  Shipping: {result.encode('ascii', 'replace').decode()}")
 
 
 async def process_order_items(items: list[dict], headless: bool = False) -> list[dict]:
