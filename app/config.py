@@ -23,6 +23,7 @@ class Settings(BaseModel):
     omg_shopify_admin_token: str = ""
     omg_shopify_client_id: str = ""
     omg_shopify_client_secret: str = ""
+    ngrok_domain: str = ""
 
 
 def _parse_recipients(raw: str) -> list[str]:
@@ -44,4 +45,5 @@ settings = Settings(
     omg_shopify_admin_token=os.getenv("OMG_SHOPIFY_ADMIN_TOKEN", ""),
     omg_shopify_client_id=os.getenv("OMG_SHOPIFY_CLIENT_ID", ""),
     omg_shopify_client_secret=os.getenv("OMG_SHOPIFY_CLIENT_SECRET", ""),
+    ngrok_domain=os.getenv("NGROK_DOMAIN", ""),
 )

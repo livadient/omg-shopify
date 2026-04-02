@@ -38,6 +38,14 @@ async def get_mappings() -> list[ProductMapping]:
     return load_mappings().mappings
 
 
+@app.middleware("http")
+async def log_all_requests(request: Request, call_next):
+    print(f">>> {request.method} {request.url.path}", flush=True)
+    response = await call_next(request)
+    print(f"<<< {response.status_code}", flush=True)
+    return response
+
+
 @app.post("/webhook/order-created")
 async def handle_order_created(
     request: Request,
@@ -581,6 +589,105 @@ async def shopify_auth_callback(code: str = "", shop: str = ""):
         """)
 
 
+async def _register_shopify_webhook(public_url: str) -> None:
+    """Register or update the orders/create webhook in Shopify to point at our current ngrok URL."""
+    import httpx
+    from app.omg_fulfillment import _admin_url, _get_access_token
+
+    token = await _get_access_token()
+    if not token:
+        print("  [!] No Shopify admin token — skipping webhook registration")
+        return
+
+    headers = {"X-Shopify-Access-Token": token, "Content-Type": "application/json"}
+    webhook_address = f"{public_url}/webhook/order-created"
+    topic = "orders/create"
+
+    async with httpx.AsyncClient() as client:
+        # List existing webhooks
+        resp = await client.get(_admin_url("webhooks.json"), headers=headers)
+        resp.raise_for_status()
+        existing = resp.json().get("webhooks", [])
+
+        # Find existing webhook for this topic
+        for wh in existing:
+            if wh.get("topic") == topic:
+                if wh["address"] == webhook_address:
+                    print(f"  [OK] Webhook already registered: {webhook_address}")
+                    return
+                # Update existing webhook to new address
+                wh_id = wh["id"]
+                resp = await client.put(
+                    _admin_url(f"webhooks/{wh_id}.json"),
+                    headers=headers,
+                    json={"webhook": {"id": wh_id, "address": webhook_address}},
+                )
+                resp.raise_for_status()
+                print(f"  [OK] Webhook updated: {webhook_address}")
+                return
+
+        # No existing webhook — create one
+        resp = await client.post(
+            _admin_url("webhooks.json"),
+            headers=headers,
+            json={"webhook": {"topic": topic, "address": webhook_address, "format": "json"}},
+        )
+        if resp.status_code == 422:
+            errors = resp.json().get("errors", {})
+            print(f"  [!] Webhook registration failed (missing read_orders scope?): {errors}")
+            print(f"    Re-authorize at /shopify-auth or manually set webhook URL in Shopify admin to:")
+            print(f"      {webhook_address}")
+            return
+        resp.raise_for_status()
+        print(f"  [OK] Webhook created: {webhook_address}")
+
+
+@app.on_event("startup")
+async def print_endpoints():
+    base = f"http://localhost:{settings.port}"
+
+    # Start ngrok tunnel for HTTPS
+    try:
+        from pyngrok import ngrok
+        kwargs = {"addr": settings.port}
+        if settings.ngrok_domain:
+            kwargs["hostname"] = settings.ngrok_domain
+        tunnel = ngrok.connect(**kwargs)
+        public_url = tunnel.public_url
+        print(f"\n  ngrok tunnel: {public_url}")
+        print(f"  Webhook URL:  {public_url}/webhook/order-created\n")
+    except Exception as e:
+        public_url = None
+        print(f"\n  ngrok failed: {e}")
+        print("  Install ngrok or run 'ngrok http 8000' manually.\n")
+
+    # Auto-register webhook with current ngrok URL
+    if public_url:
+        try:
+            await _register_shopify_webhook(public_url)
+        except Exception as e:
+            print(f"  [!] Webhook registration failed: {e}")
+
+    print("=" * 50)
+    print("  OMG Shopify → TShirtJunkies Service")
+    print("=" * 50)
+    print(f"  Manual Order:    {base}/manual-order")
+    print(f"  Fulfill Order:   {base}/fulfill-order")
+    print(f"  Shopify Auth:    {base}/shopify-auth")
+    print(f"  View Mappings:   {base}/mappings")
+    if public_url:
+        print(f"  Webhook (public): {public_url}/webhook/order-created")
+    print("=" * 50 + "\n")
+
+
 if __name__ == "__main__":
+    import asyncio
+    import sys
+
     import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8080, reload=True)
+
+    # Windows needs ProactorEventLoop for Playwright subprocess support
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+    uvicorn.run("app.main:app", host="0.0.0.0", port=settings.port, reload=True)

@@ -17,3 +17,4 @@ typing_extensions==4.15.0
 uvicorn==0.42.0
 aiosmtplib==3.0.2
 python-dotenv==1.1.0
+pyngrok

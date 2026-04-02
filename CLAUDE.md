@@ -36,9 +36,11 @@ playwright install chromium
 # Configure (copy .env.example to .env and fill in values)
 cp .env.example .env
 
-# Run
-.venv/Scripts/python -m uvicorn app.main:app --reload
+# Run (use main.py directly — sets Windows ProactorEventLoop for Playwright)
+.venv/Scripts/python app/main.py
 ```
+
+**Important (Windows):** Always run via `python app/main.py`, not `uvicorn` directly. The `__main__` block sets `WindowsProactorEventLoopPolicy` which Playwright needs for subprocess support on Windows.
 
 ## Configuration
 
@@ -58,6 +60,8 @@ All settings are loaded from environment variables (`.env` file supported via py
 | `OMG_SHOPIFY_CLIENT_ID` | (empty) | Shopify app client ID (for OAuth) |
 | `OMG_SHOPIFY_CLIENT_SECRET` | (empty) | Shopify app client secret (for OAuth) |
 | `OMG_SHOPIFY_ADMIN_TOKEN` | (empty) | Admin API access token (obtained via OAuth) |
+| `NGROK_DOMAIN` | (empty) | Fixed ngrok domain (e.g. `myapp.ngrok-free.dev`) — avoids random URLs |
+| `PORT` | `8080` | Server port (must match Shopify OAuth redirect URI whitelist) |
 
 ## API Endpoints
 
@@ -73,6 +77,12 @@ All settings are loaded from environment variables (`.env` file supported via py
 | `POST` | `/fulfill-order/parse` | Parse TShirtJunkies fulfillment email for order number + tracking |
 | `GET` | `/shopify-auth` | Start Shopify OAuth flow to authorize the app |
 | `GET` | `/shopify-auth/callback` | OAuth callback — exchanges code for access token |
+
+## Webhook Auto-Registration
+
+On startup, if an ngrok tunnel is active and a Shopify admin token is available, the service automatically registers (or updates) the `orders/create` webhook URL in Shopify. This ensures the webhook always points to the current ngrok URL, even if it changes between restarts.
+
+If the token lacks `read_orders` scope, registration will fail gracefully with a message to re-authorize at `/shopify-auth` or set the webhook URL manually in Shopify admin (Settings > Notifications > Webhooks).
 
 ## Webhook Flow
 
@@ -194,9 +204,14 @@ The service connects to the OMG Shopify store via a custom app using OAuth. The 
 - Auth header: `X-Shopify-Access-Token: {token}`
 - Used by `app/omg_fulfillment.py` for order lookup and fulfillment creation
 
+## OAuth Redirect URI
+
+The Shopify OAuth redirect URI is hardcoded to `http://localhost:8080/shopify-auth/callback`. This must match the **Allowed redirection URL(s)** configured in the Shopify Partners dashboard for the app. If you change the port, update the whitelist there too.
+
 ## Future Considerations
 
 - Contact tshirtjunkies.co (`info@tshirtjunkies.co` / `+357-99897089`) for a Storefront API token to enable fully programmatic checkout
 - They have a wholesale/partner program that could simplify this
 - Add `asyncio.Semaphore` to limit concurrent Playwright instances if order volume increases
 - Add webhook signature verification using `SHOPIFY_WEBHOOK_SECRET`
+- Set a fixed ngrok domain (`NGROK_DOMAIN`) to avoid webhook URL changes on restart
