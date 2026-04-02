@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Python FastAPI service that receives Shopify webhook events from **omg.com.cy** and automatically creates corresponding orders on **tshirtjunkies.co** (a Shopify store based in Cyprus). When an order comes in, the service uses **Playwright browser automation** to upload the design, select color (White) and matching size, and add the customized item to cart on TShirtJunkies via their Qstomizer app. An **email notification** is then sent with order details and cart links.
+Python FastAPI service that receives Shopify webhook events from **omg.com.cy** and automatically creates corresponding orders on **tshirtjunkies.co** (a Shopify store based in Cyprus). When an order comes in, the service uses **Playwright browser automation** to upload the design, select color (White) and matching size, and add the customized item to cart on TShirtJunkies via their Qstomizer app. An **email notification** is then sent with order details and shareable cart/checkout links.
 
 ## Architecture
 
@@ -13,7 +13,8 @@ omg.com.cy (Shopify)  →  webhook: orders/create
    ├── Receive webhook (respond immediately)
    ├── Map OMG variant IDs → TShirtJunkies variant/product IDs
    ├── [Background] Playwright: upload design to Qstomizer, select White + matching size, add to cart
-   └── [Background] Email notification with order details + cart link to configured recipients
+   ├── [Background] Build shareable cart permalink with pre-filled checkout params
+   └── [Background] Email notification with order details, shipping info + cart links
 ```
 
 ## Tech Stack
@@ -23,6 +24,7 @@ omg.com.cy (Shopify)  →  webhook: orders/create
 - **httpx** for async HTTP requests
 - **Pydantic** for data models
 - **Playwright** for browser automation (Qstomizer customization)
+- **pyngrok** for ngrok tunnel management
 - **aiosmtplib** for async email notifications
 - **python-dotenv** for `.env` configuration
 
@@ -36,11 +38,11 @@ playwright install chromium
 # Configure (copy .env.example to .env and fill in values)
 cp .env.example .env
 
-# Run (use main.py directly — sets Windows ProactorEventLoop for Playwright)
+# Run (must use main.py directly, not uvicorn)
 .venv/Scripts/python app/main.py
 ```
 
-**Important (Windows):** Always run via `python app/main.py`, not `uvicorn` directly. The `__main__` block sets `WindowsProactorEventLoopPolicy` which Playwright needs for subprocess support on Windows.
+**Important (Windows):** Playwright runs in a separate thread with its own `ProactorEventLoop` to work around uvicorn's `SelectorEventLoop` which doesn't support subprocesses on Windows. The `__main__` block also restricts the reload watcher to `app/` only (excludes `static/`, `*.png`, `*.json`) to prevent restarts when Playwright saves screenshots.
 
 ## Configuration
 
@@ -67,6 +69,7 @@ All settings are loaded from environment variables (`.env` file supported via py
 
 | Method | Path | Purpose |
 |--------|------|---------|
+| `GET` | `/test-webhook` | Test webhook form — send fake orders with country selection (CY/GR/FR) |
 | `POST` | `/map-products?source_url=...&target_url=...` | Create mapping between two product URLs |
 | `GET` | `/mappings` | View all saved product mappings |
 | `POST` | `/webhook/order-created` | Shopify webhook handler — maps items, runs Playwright in background, sends email |
@@ -92,22 +95,50 @@ If the token lacks `read_orders` scope, registration will fail gracefully with a
 4. **Background task** runs for each mapped item:
    - Determines product type (male/female) from source handle
    - Extracts size from `variant_title`
-   - Runs Playwright automation: opens Qstomizer, selects White, uploads `static/front_design.png`, selects correct size, adds to cart
-5. **Email notification** sent to configured recipients with order details + cart links
+   - Runs Playwright automation in a separate thread (ProactorEventLoop)
+   - Qstomizer: selects White color, uploads design, selects size, adds to cart
+   - Fetches cart contents (`/cart.js`) to get Qstomizer properties
+   - Builds a shareable cart permalink with pre-filled checkout params
+5. **Email notification** sent with order details, shipping info block (for copy-paste), and cart/checkout links
+
+## Cart Permalink (Shareable Links)
+
+Shopify checkout sessions don't persist across browsers. Instead of returning `/checkouts/...` URLs, the service builds **cart permalinks**:
+
+```
+https://tshirtjunkies.co/cart/VARIANT_ID:QTY?checkout[email]=...&checkout[shipping_address][first_name]=...&attributes[_customorderid]=...
+```
+
+These links:
+- Work in any browser/device (no session dependency)
+- Pre-fill the checkout form with customer shipping details
+- Include Qstomizer properties (`_customorderid`, `_customorderkey`, `_customimagefront`, etc.) as cart attributes
+
+## Shipping Method Mapping
+
+OMG shipping methods are mapped to TShirtJunkies checkout options by country:
+
+| Country | OMG Method | OMG Price | TJ Match | TJ Price |
+|---------|-----------|-----------|----------|----------|
+| **CY** | Travel Express | EUR 3.00 | Travel Express pickup | EUR 3.00 |
+| **GR** | Geniki Taxydromiki | EUR 5.00 | Geniki Taxydromiki pickup | EUR 5.00 |
+| **FR** | Europe postal | EUR 6.00 | Postal Shipping | EUR 5.00 |
+
+Mapping is defined in `SHIPPING_METHOD_MAP` in `qstomizer_automation.py`. For CY, the automation actively selects Travel Express. For GR and FR, the correct option is auto-selected (first/only option).
 
 ## Product Mappings
 
 Mappings are stored in `product_mappings.json` at the project root. Variants are matched by size option.
 
-### Male Tee (S–5XL) — Full coverage
+### Male Tee (S-5XL) - Full coverage
 
-- **OMG:** `astous-na-laloun-graphic-tee-male-eu-edition` (€30–39.50)
-- **TShirtJunkies:** `classic-tee-up-to-5xl` (€20–22)
+- **OMG:** `astous-na-laloun-graphic-tee-male-eu-edition` (EUR 30-39.50)
+- **TShirtJunkies:** `classic-tee-up-to-5xl` (EUR 20-22)
 
-### Female Tee (S–XL) — Full coverage
+### Female Tee (S-XL) - Full coverage
 
-- **OMG:** `astous-na-laloun-graphic-tee-female-eu-edition` (€30)
-- **TShirtJunkies:** `women-t-shirt` (€23)
+- **OMG:** `astous-na-laloun-graphic-tee-female-eu-edition` (EUR 30)
+- **TShirtJunkies:** `women-t-shirt` (EUR 23)
 
 Note: OMG female EU edition only goes up to XL, which matches TJ perfectly.
 
@@ -124,7 +155,7 @@ TShirtJunkies uses **Qstomizer** for custom design uploads. The service automate
 
 1. Open Qstomizer page (1920x1080 viewport required for canvas rendering)
 2. Hide overlapping elements (text window, sticky header)
-3. Select color via `.colorVarWrap` swatch click (jQuery trigger)
+3. Select color via native MouseEvent dispatch on `.colorVarWrap[data-colordes]` + `Ka()` call
 4. Upload design image to `#btnUploadImage` file input
 5. Wait for upload + processing (`#msgUploading` then `#msgProcessing`)
 6. Click `.imagesubcontainer` thumbnail via jQuery to place on canvas
@@ -132,15 +163,43 @@ TShirtJunkies uses **Qstomizer** for custom design uploads. The service automate
 8. Click `#addtocart` (ORDER NOW) via jQuery
 9. Set size/qty in quantity window (`.infoQty` inputs matched to `.Rtable-cell` labels)
 10. Click ADD TO CART in quantity window
-11. Wait for "Saving Data..." → redirect to `/cart`
+11. Wait for "Saving Data..." then redirect to `/cart`
+12. Fetch `/cart.js` to get Qstomizer properties (`_customorderid`, `_customorderkey`, etc.)
+13. Build shareable cart permalink with checkout pre-fill params
 
 Available colors: Black, Navy Blue, Red, Royal Blue, Sport Grey, White (default: White)
+
+### Color Selection Details
+
+Qstomizer binds color change via jQuery delegation on `.colorVariationCont`. The automation:
+1. Toggles `colorVarWrapActive` class on the correct swatch
+2. Calls `Ka({updateVisualPrice: false})` to update Qstomizer's internal state
+3. The color is stored in Qstomizer's order data (not as a Shopify variant — TJ products only have Size as a variant option)
+
+Note: The canvas/mockup always shows the default color (black). The actual color for printing is stored in Qstomizer's backend via `_customorderid`.
 
 ### Manual Usage
 
 ```bash
 .venv/Scripts/python -m app.qstomizer_automation male L White
 ```
+
+## Playwright on Windows
+
+Playwright requires subprocess support which Windows' `SelectorEventLoop` (used by uvicorn) doesn't provide. The solution:
+
+- `customize_and_add_to_cart()` runs Playwright in a **separate thread** with its own `ProactorEventLoop` via `ThreadPoolExecutor`
+- This is handled transparently — callers use `await customize_and_add_to_cart(...)` as normal
+- Max 2 concurrent Playwright instances (`_playwright_executor` pool)
+
+## Test Webhook
+
+The `/test-webhook` page lets you test the full automation flow without placing real orders:
+
+- Select product type (male/female), size, quantity
+- Select country (Cyprus, Greece, France) with matching test addresses
+- Sends a fake order to `/webhook/order-created` using real variant IDs from mappings
+- Triggers the full Playwright + email flow
 
 ## TShirtJunkies API Details
 
@@ -158,7 +217,8 @@ tshirtjunkies.co is a Shopify store. The following public endpoints are availabl
 
 - **Storefront GraphQL API is blocked** (403, no public token)
 - Cart operations are session/cookie-based (use `requests.Session()` or `httpx.AsyncClient()`)
-- Checkout URL format: `https://tshirtjunkies.co/cart/variant_id:qty,variant_id:qty`
+- Cart permalink format: `https://tshirtjunkies.co/cart/variant_id:qty,variant_id:qty`
+- Checkout pre-fill params: `?checkout[email]=...&checkout[shipping_address][first_name]=...`
 - Payment still requires human confirmation (no programmatic checkout without Storefront API token from store owner)
 
 ## OMG Store API Notes
@@ -171,17 +231,20 @@ tshirtjunkies.co is a Shopify store. The following public endpoints are availabl
 
 ```
 app/
-  main.py                — FastAPI app, webhook handler, background task orchestration
-  config.py              — Settings loaded from .env (SMTP, webhook secret, etc.)
+  main.py                — FastAPI app, webhook handler, test webhook, background task orchestration
+  config.py              — Settings loaded from .env (SMTP, webhook secret, ngrok, port, etc.)
   models.py              — Pydantic models (ProductMapping, VariantMapping)
   mapper.py              — Product mapping logic, saves to product_mappings.json
   shopify_client.py      — Fetches products from any Shopify store
   cart_client.py         — TShirtJunkies cart operations
-  qstomizer_automation.py — Playwright browser automation for Qstomizer
-  email_service.py       — Async email notifications via aiosmtplib
+  qstomizer_automation.py — Playwright browser automation, cart permalink builder, shipping method mapping
+  email_service.py       — Async email notifications via aiosmtplib (includes shipping details block)
+  email_parser.py        — Parse OMG order confirmation emails
+  omg_fulfillment.py     — OMG Shopify Admin API: order lookup, fulfillment creation, OAuth token exchange
 product_mappings.json    — Saved variant ID mappings
 static/
   front_design.png       — Design image uploaded to Qstomizer
+  checkout_result.png    — Latest Playwright screenshot (auto-generated)
 .env.example             — Template for environment variables
 ```
 
@@ -208,6 +271,15 @@ The service connects to the OMG Shopify store via a custom app using OAuth. The 
 
 The Shopify OAuth redirect URI is hardcoded to `http://localhost:8080/shopify-auth/callback`. This must match the **Allowed redirection URL(s)** configured in the Shopify Partners dashboard for the app. If you change the port, update the whitelist there too.
 
+## Email Notifications
+
+Order notification emails include:
+- Order number, customer name, total
+- **Shipping details block** with name, address, city, zip, country, phone, email (for copy-paste if needed)
+- Product table with size, qty, and **cart permalink** (shareable checkout link)
+- If Playwright fails: red banner with link to Manual Order page (`http://40.81.137.193:8080/manual-order`)
+- Qstomizer fallback links for manual design upload
+
 ## Future Considerations
 
 - Contact tshirtjunkies.co (`info@tshirtjunkies.co` / `+357-99897089`) for a Storefront API token to enable fully programmatic checkout
@@ -215,3 +287,4 @@ The Shopify OAuth redirect URI is hardcoded to `http://localhost:8080/shopify-au
 - Add `asyncio.Semaphore` to limit concurrent Playwright instances if order volume increases
 - Add webhook signature verification using `SHOPIFY_WEBHOOK_SECRET`
 - Set a fixed ngrok domain (`NGROK_DOMAIN`) to avoid webhook URL changes on restart
+- Extend shipping method mapping for more countries as sales expand
