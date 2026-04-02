@@ -297,6 +297,7 @@ async def _process_order_background(
             item["cart_url"] = result["checkout_url"]
             item["mockup_url"] = result.get("mockup_url")
             item["preview_name"] = result.get("preview_name")
+            item["color_preview_name"] = result.get("color_preview_name")
             logger.info(f"  {item['title']} ({size}) → {item['cart_url']}")
             if item.get("preview_name"):
                 logger.info(f"  Preview: /static/{item['preview_name']}")
@@ -499,6 +500,7 @@ async def _process_manual_order_background(
             item["cart_url"] = result["checkout_url"]
             item["mockup_url"] = result.get("mockup_url")
             item["preview_name"] = result.get("preview_name")
+            item["color_preview_name"] = result.get("color_preview_name")
             logger.info(f"  {item['title']} ({item['variant_title']}) → {item['cart_url']}")
             if item.get("preview_name"):
                 logger.info(f"  Preview: /static/{item['preview_name']}")

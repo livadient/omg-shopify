@@ -94,11 +94,17 @@ def _build_html(
         if error:
             link += f'<br><small style="color:#dc2626;">Error: {error}</small>'
 
-        # Show customizer preview thumbnail if available
+        # Show customizer preview thumbnails
+        color_preview_name = item.get("color_preview_name")
         preview_img = ""
-        if preview_name:
-            preview_url = f"{base_url}/static/{preview_name}"
-            preview_img = f'<br><a href="{preview_url}"><img src="{preview_url}" style="max-width:120px;margin-top:4px;border-radius:4px;" alt="preview"></a>'
+        if color_preview_name or preview_name:
+            preview_img = "<br>"
+            if color_preview_name:
+                cp_url = f"{base_url}/static/{color_preview_name}"
+                preview_img += f'<a href="{cp_url}"><img src="{cp_url}" style="max-width:120px;margin-top:4px;border-radius:4px;" alt="color"></a> '
+            if preview_name:
+                pp_url = f"{base_url}/static/{preview_name}"
+                preview_img += f'<a href="{pp_url}"><img src="{pp_url}" style="max-width:120px;margin-top:4px;border-radius:4px;" alt="design"></a>'
 
         rows += f"""
         <tr>

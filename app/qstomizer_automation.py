@@ -170,6 +170,13 @@ async def _customize_and_add_to_cart_impl(
         """)
         print(f"  Active color: {active_color}")
 
+        # Screenshot after color selection
+        import time
+        color_preview_name = f"color_{product_type}_{color}_{int(time.time())}.png"
+        color_preview_path = STATIC_DIR / color_preview_name
+        await page.screenshot(path=str(color_preview_path), full_page=False)
+        print(f"  Color screenshot: {color_preview_path}")
+
         # --- Step 1: Upload the design image ---
         print(f"Uploading design: {image_path.name}")
         upload_btn = await qf.wait_for_selector("#btnUploadImage", timeout=10000)
@@ -358,7 +365,12 @@ async def _customize_and_add_to_cart_impl(
 
         await browser.close()
 
-    return {"checkout_url": checkout_url, "mockup_url": mockup_url, "preview_name": preview_name}
+    return {
+        "checkout_url": checkout_url,
+        "mockup_url": mockup_url,
+        "preview_name": preview_name,
+        "color_preview_name": color_preview_name,
+    }
 
 
 def _build_checkout_permalink(cart_data: dict, shipping: dict | None = None) -> str:
