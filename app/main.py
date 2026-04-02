@@ -79,11 +79,18 @@ TEST_WEBHOOK_HTML = """
         <input type="number" id="qty" value="1" min="1" max="10" style="width:80px;">
         <label>Customer Name:</label>
         <input type="text" id="customer_name" value="Test Customer" style="width:300px;">
+        <label>Country:</label>
+        <select id="country">
+            <option value="CY" data-city="Nicosia" data-zip="1000" data-addr="123 Test Street" data-phone="+35799000000" selected>Cyprus</option>
+            <option value="GR" data-city="Athens" data-zip="10563" data-addr="10 Ermou St" data-phone="+306900000000">Greece</option>
+            <option value="FR" data-city="Paris" data-zip="75001" data-addr="10 Rue de Rivoli" data-phone="+33600000000">France</option>
+        </select>
         <br>
         <button type="submit">Send Test Webhook</button>
     </form>
     <p class="hint">This posts a fake order to <code>/webhook/order-created</code> using real variant IDs
-       from your mappings. Playwright will run and you'll get an email.</p>
+       from your mappings. Playwright will run and you'll get an email.
+       <br>Shipping method will be auto-selected: CY=Travel Express, GR=Geniki Taxydromiki, FR=Postal.</p>
     <div id="status"></div>
     <script>
         const VARIANT_MAP = %VARIANT_MAP%;
@@ -104,6 +111,9 @@ TEST_WEBHOOK_HTML = """
             status.style.display = 'block';
             status.className = 'loading';
             status.textContent = 'Sending test webhook...';
+            const countryEl = document.getElementById('country');
+            const opt = countryEl.options[countryEl.selectedIndex];
+            const country_code = countryEl.value;
             const order = {
                 id: Date.now(), order_number: 'TEST-' + Date.now(),
                 line_items: [{
@@ -115,7 +125,9 @@ TEST_WEBHOOK_HTML = """
                 customer: { first_name: name[0] || 'Test', last_name: name.slice(1).join(' ') || 'Customer' },
                 shipping_address: {
                     first_name: name[0] || 'Test', last_name: name.slice(1).join(' ') || 'Customer',
-                    address1: '123 Test Street', city: 'Nicosia', country_code: 'CY', zip: '1000',
+                    address1: opt.dataset.addr, city: opt.dataset.city,
+                    country_code: country_code, zip: opt.dataset.zip,
+                    phone: opt.dataset.phone,
                 },
                 total_price: '30.00', currency: 'EUR',
             };
