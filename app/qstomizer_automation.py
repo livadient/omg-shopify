@@ -418,16 +418,24 @@ async def _select_shipping_method(page, country_code: str) -> None:
     preferred = SHIPPING_METHOD_MAP.get(country_code, "")
     print(f"  Selecting shipping method for {country_code} (preferred: {preferred or 'cheapest'})...")
 
-    # Wait for shipping methods to appear (they load dynamically after address validates)
+    # Wait for actual shipping method options to appear (not Ship/Pickup toggle)
     shipping_found = False
-    for attempt in range(3):
+    for attempt in range(5):
         await page.wait_for_timeout(3000)
-        # Check if shipping options are visible
         count = await page.evaluate("""
             () => {
+                // Count radio buttons that are NOT the Ship/Pickup delivery type toggle
                 const radios = document.querySelectorAll('input[type="radio"]');
-                const labels = document.querySelectorAll('[role="radio"]');
-                return radios.length + labels.length;
+                let shippingCount = 0;
+                for (const r of radios) {
+                    if (r.id === 'SHIPPING' || r.id === 'PICK_UP') continue;
+                    const label = document.querySelector('label[for="' + r.id + '"]');
+                    const text = label ? label.textContent.trim() : '';
+                    if (text.includes('Credit') || text.includes('PayPal') || text.includes('Viva')) continue;
+                    if (text === 'Ship' || text === 'Pickup') continue;
+                    shippingCount++;
+                }
+                return shippingCount;
             }
         """)
         if count > 0:
@@ -439,20 +447,22 @@ async def _select_shipping_method(page, country_code: str) -> None:
         print("  Warning: No shipping methods found")
         return
 
-    # List available methods and select preferred one
+    # List available shipping methods and select preferred one
+    # Skip: Ship/Pickup toggle, payment methods, non-shipping radios
     result = await page.evaluate(f"""
         () => {{
             const preferred = '{preferred}'.toLowerCase();
+            const skip = ['ship', 'pickup', 'credit', 'paypal', 'card', 'viva'];
+            const skipIds = ['SHIPPING', 'PICK_UP'];
             const methods = [];
 
-            // Shopify checkout: radio inputs with labels
             const radios = document.querySelectorAll('input[type="radio"]');
             for (const radio of radios) {{
+                if (skipIds.includes(radio.id)) continue;
                 const label = document.querySelector('label[for="' + radio.id + '"]');
                 if (!label) continue;
                 const text = label.textContent.trim();
-                // Skip non-shipping radios (payment methods etc)
-                if (text.includes('Credit') || text.includes('PayPal') || text.includes('card'))
+                if (skip.some(s => text.toLowerCase() === s || text.toLowerCase().includes('credit')))
                     continue;
                 methods.push({{id: radio.id, text: text, el: radio}});
             }}
@@ -461,14 +471,14 @@ async def _select_shipping_method(page, country_code: str) -> None:
             const roleRadios = document.querySelectorAll('[role="radio"]');
             for (const rr of roleRadios) {{
                 const text = rr.textContent.trim();
-                if (text.includes('Credit') || text.includes('PayPal') || text.includes('card'))
-                    continue;
+                if (skip.some(s => text.toLowerCase() === s)) continue;
+                if (text.includes('Credit') || text.includes('PayPal') || text.includes('Viva')) continue;
                 if (!methods.some(m => m.text === text)) {{
                     methods.push({{id: rr.id, text: text, el: rr}});
                 }}
             }}
 
-            if (methods.length === 0) return 'no_shipping_methods_found';
+            if (methods.length === 0) return 'no_shipping_methods (may be auto-selected)';
 
             const listing = methods.map(m => m.text.substring(0, 60)).join(' | ');
 
