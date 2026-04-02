@@ -223,27 +223,6 @@ async def _customize_and_add_to_cart_impl(
             await size_select.select_option(label=size)
             await page.wait_for_timeout(500)
 
-        # --- Step 3.5: Screenshot the customizer preview ---
-        # Add a color/size label overlay so the screenshot is informative
-        await page.evaluate(f"""
-            () => {{
-                const label = document.createElement('div');
-                label.id = 'omg-preview-label';
-                label.textContent = 'Color: {color} | Size: {size} | Type: {product_type}';
-                label.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;' +
-                    'background:#16a34a;color:white;text-align:center;padding:8px;font-size:16px;' +
-                    'font-family:sans-serif;font-weight:bold;';
-                document.body.prepend(label);
-            }}
-        """)
-        await page.wait_for_timeout(500)
-        preview_name = f"preview_{product_type}_{size}_{int(time.time())}.png"
-        preview_path = STATIC_DIR / preview_name
-        await page.screenshot(path=str(preview_path), full_page=False)
-        print(f"  Preview screenshot: {preview_path}")
-        # Remove label
-        await page.evaluate("document.getElementById('omg-preview-label')?.remove()")
-
         # --- Step 4: Click ORDER NOW ---
         print("Clicking ORDER NOW...")
         await qf.evaluate("jQuery('#addtocart').trigger('click')")
@@ -359,28 +338,19 @@ async def _customize_and_add_to_cart_impl(
         checkout_url = _build_checkout_permalink(cart_data, shipping)
         print(f"Checkout permalink: {checkout_url}")
 
-        # Extract Qstomizer mockup image URL
+        # Extract Qstomizer mockup image URL (the rendered product preview)
         mockup_url = None
         for item in cart_data.get("items", []):
             props = item.get("properties", {})
-            mockup_url = props.get("_customimagefront") or props.get("Custom Image:")
+            # Prefer the Shopify CDN URL (publicly accessible, works in emails)
+            mockup_url = props.get("Custom Image:") or props.get("_customimagefront")
             if mockup_url:
                 print(f"Mockup image: {mockup_url}")
                 break
 
-        # Take screenshot
-        screenshot_path = STATIC_DIR / "checkout_result.png"
-        await page.screenshot(path=str(screenshot_path), full_page=True)
-        print(f"Screenshot saved: {screenshot_path}")
-
         await browser.close()
 
-    return {
-        "checkout_url": checkout_url,
-        "mockup_url": mockup_url,
-        "preview_name": preview_name,
-        "color_preview_name": color_preview_name,
-    }
+    return {"checkout_url": checkout_url, "mockup_url": mockup_url}
 
 
 def _build_checkout_permalink(cart_data: dict, shipping: dict | None = None) -> str:

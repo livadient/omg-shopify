@@ -77,8 +77,7 @@ def _build_html(
         qstomizer_url = item.get("qstomizer_url", "")
         error = item.get("error")
 
-        preview_name = item.get("preview_name")
-        base_url = f"http://40.81.137.193:{settings.port}"
+        mockup_url = item.get("mockup_url")
 
         if cart_url:
             link = f'<a href="{cart_url}" style="color:#2563eb;font-weight:bold;">Open Cart &rarr;</a>'
@@ -87,18 +86,13 @@ def _build_html(
         else:
             link = '<span style="color:#dc2626;">No link available</span>'
 
-        if preview_name:
-            preview_url = f"{base_url}/static/{preview_name}"
-            link += f'<br><a href="{preview_url}" style="color:#6b7280;font-size:12px;">View Preview</a>'
-
         if error:
             link += f'<br><small style="color:#dc2626;">Error: {error}</small>'
 
-        # Show customizer preview thumbnail (includes color/size label overlay)
+        # Show Qstomizer rendered mockup (hosted on Shopify CDN, works in any email client)
         preview_img = ""
-        if preview_name:
-            pp_url = f"{base_url}/static/{preview_name}"
-            preview_img = f'<br><a href="{pp_url}"><img src="{pp_url}" style="max-width:150px;margin-top:4px;border-radius:4px;" alt="preview"></a>'
+        if mockup_url:
+            preview_img = f'<br><a href="{mockup_url}"><img src="{mockup_url}" style="max-width:150px;margin-top:4px;border-radius:4px;" alt="mockup"></a>'
 
         rows += f"""
         <tr>
