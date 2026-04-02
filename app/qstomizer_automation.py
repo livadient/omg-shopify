@@ -392,18 +392,20 @@ async def _fill_checkout(page, shipping: dict) -> None:
             continue
         try:
             field = await page.wait_for_selector(selector, timeout=5000)
-            await field.click(click_count=3)  # select all existing text
-            await field.type(str(value), delay=30)  # type char by char for React
-            await page.wait_for_timeout(300)
+            # Use React's native value setter + input event to update React state
+            await field.evaluate("""(el, val) => {
+                const setter = Object.getOwnPropertyDescriptor(
+                    window.HTMLInputElement.prototype, 'value'
+                ).set;
+                setter.call(el, val);
+                el.dispatchEvent(new Event('input', {bubbles: true}));
+                el.dispatchEvent(new Event('change', {bubbles: true}));
+                el.dispatchEvent(new Event('blur', {bubbles: true}));
+            }""", str(value))
+            await page.wait_for_timeout(500)
             # Dismiss autocomplete dropdown if it appears
             await page.keyboard.press("Escape")
             await page.wait_for_timeout(200)
-            # Blur the field to trigger Shopify's autosave
-            await field.evaluate("""el => {
-                el.dispatchEvent(new Event('change', {bubbles: true}));
-                el.dispatchEvent(new Event('blur', {bubbles: true}));
-            }""")
-            await page.wait_for_timeout(300)
             print(f"  {key}: filled")
         except Exception as e:
             print(f"  {key}: failed ({e})")
