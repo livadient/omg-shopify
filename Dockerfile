@@ -1,5 +1,7 @@
 FROM python:3.13-slim
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Install system dependencies for Playwright/Chromium
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libnss3 \
@@ -17,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+WORKDIR /project
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
@@ -27,7 +29,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
 RUN useradd --create-home appuser
 USER appuser
 
-COPY --chown=appuser:appuser . .
+COPY --chown=appuser:appuser . /project
 
 EXPOSE 8080
 
