@@ -24,6 +24,7 @@ class Settings(BaseModel):
     omg_shopify_client_id: str = ""
     omg_shopify_client_secret: str = ""
     ngrok_domain: str = ""
+    server_base_url: str = "http://40.81.137.240:8080"
 
 
 def _parse_recipients(raw: str) -> list[str]:
@@ -46,4 +47,5 @@ settings = Settings(
     omg_shopify_client_id=os.getenv("OMG_SHOPIFY_CLIENT_ID", ""),
     omg_shopify_client_secret=os.getenv("OMG_SHOPIFY_CLIENT_SECRET", ""),
     ngrok_domain=os.getenv("NGROK_DOMAIN", ""),
+    server_base_url=os.getenv("SERVER_BASE_URL", "http://40.81.137.240:8080"),
 )

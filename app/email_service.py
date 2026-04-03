@@ -102,7 +102,7 @@ def _build_html(
             <td style="padding:8px;border-bottom:1px solid #e5e7eb;">{link}</td>
         </tr>"""
 
-    manual_order_url = f"http://40.81.137.193:{settings.port}/manual-order"
+    manual_order_url = f"{settings.server_base_url}/manual-order"
     has_errors = any(item.get("error") for item in items)
     manual_order_note = ""
     if has_errors:
