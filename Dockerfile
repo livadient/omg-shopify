@@ -33,4 +33,4 @@ COPY --chown=appuser:appuser . /project
 
 EXPOSE 8080
 
-ENTRYPOINT ["python", "app/main.py"]
+ENTRYPOINT ["python", "-m", "app.main"]
