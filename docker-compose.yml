@@ -1,0 +1,10 @@
+services:
+  omg-shopify:
+    build: .
+    env_file: .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./product_mappings.json:/app/product_mappings.json
+      - ./static/front_design.png:/app/static/front_design.png
+    restart: unless-stopped

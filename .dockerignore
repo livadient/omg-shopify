@@ -1,0 +1,6 @@
+.git/
+__pycache__/
+.env
+.venv/
+*.png
+!static/front_design.png

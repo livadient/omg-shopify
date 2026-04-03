@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="OMG Shopify → TShirtJunkies Order Service")
 
+# Dedup: track recently processed order IDs to ignore Shopify webhook retries
+_processed_orders: set[int] = set()
+
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -194,6 +197,15 @@ async def handle_order_created(
     notification with order details and cart links.
     """
     order = await request.json()
+    order_id = order.get("id")
+
+    # Shopify often sends duplicate webhooks (retries). Skip if already processing.
+    if order_id and order_id in _processed_orders:
+        logger.info(f"Duplicate webhook for order #{order.get('order_number', order_id)}, skipping")
+        return {"status": "duplicate", "order_id": order_id}
+    if order_id:
+        _processed_orders.add(order_id)
+
     config = load_mappings()
 
     # Build lookups from source variant ID

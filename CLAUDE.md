@@ -280,6 +280,79 @@ Order notification emails include:
 - If Playwright fails: red banner with link to Manual Order page (`http://40.81.137.193:8080/manual-order`)
 - Qstomizer fallback links for manual design upload
 
+## Deployment — Azure Ubuntu VM (Docker + Auto-Deploy)
+
+This project needs to be deployed to the same Azure VM as bot-trading (`40.81.137.240`, user `vangelisl`).
+
+### Steps to deploy
+
+1. **Create `Dockerfile`:**
+   - Base: `python:3.13-slim`
+   - Install system deps for Playwright: `libnss3`, `libatk1.0-0`, `libatk-bridge2.0-0`, `libcups2`, `libxdamage1`, `libpango-1.0-0`, `libcairo2`, `libgbm1`, `libasound2`, `libxrandr2`, `libxcomposite1`, `libxshmfence1`, `fonts-liberation`
+   - `pip install -r requirements.txt && playwright install chromium --with-deps`
+   - Non-root user
+   - Entrypoint: `python app/main.py`
+   - Expose port `8080`
+
+2. **Create `docker-compose.yml`:**
+   - Service: `omg-shopify`
+   - `env_file: .env` for secrets (Shopify tokens, SMTP, etc.)
+   - Mount `product_mappings.json` and `static/front_design.png`
+   - Port: `8080:8080`
+   - `restart: unless-stopped`
+
+3. **Create `.env.example`** with all required vars (see Configuration section above)
+
+4. **Create `.dockerignore`** — exclude `.git/`, `__pycache__/`, `.env`, `.venv/`, `*.png` (except `front_design.png`)
+
+5. **Create `.github/workflows/deploy.yml`:**
+   ```yaml
+   name: Deploy to Azure VM
+   on:
+     push:
+       branches: [main]  # or master, check which branch
+   jobs:
+     deploy:
+       runs-on: ubuntu-latest
+       steps:
+         - name: Deploy via SSH
+           uses: appleboy/ssh-action@v1
+           with:
+             host: ${{ secrets.SERVER_HOST }}
+             username: ${{ secrets.SERVER_USER }}
+             key: ${{ secrets.SERVER_SSH_KEY }}
+             script: |
+               cd ~/omg-shopify-python
+               git pull origin main
+               docker compose up -d --build
+   ```
+
+6. **GitHub repo secrets** (Settings > Secrets > Actions):
+   - `SERVER_HOST` = `40.81.137.240`
+   - `SERVER_USER` = `vangelisl`
+   - `SERVER_SSH_KEY` = same deploy key as bot-trading (already on server)
+
+7. **On the server:**
+   ```bash
+   # Clone (deploy key already set up from bot-trading)
+   git clone git@github.com:livadient/omg-shopify-python.git
+   cd omg-shopify-python
+   cp .env.example .env
+   nano .env  # fill in Shopify tokens, SMTP, etc.
+   # Copy design file if not in repo
+   docker compose up -d --build
+   ```
+
+8. **Azure networking:** Open port `8080` inbound (same as port 8765 was opened for bot-trading dashboard)
+
+9. **Ngrok:** Not needed in production — Shopify webhook URL should point directly to `http://40.81.137.240:8080/webhook/order-created` (or use a domain/reverse proxy with HTTPS)
+
+### Notes
+- Playwright in Docker needs `--no-sandbox` flag or the chromium deps listed above
+- The Windows `ProactorEventLoop` workaround in `main.py` is not needed on Linux — may need a small conditional
+- `product_mappings.json` should persist across deploys (mount as volume or commit to repo)
+- Email notification links currently reference `http://40.81.137.193:8080` — update to the correct server IP or domain
+
 ## Future Considerations
 
 - Contact tshirtjunkies.co (`info@tshirtjunkies.co` / `+357-99897089`) for a Storefront API token to enable fully programmatic checkout
