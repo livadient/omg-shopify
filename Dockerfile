@@ -22,12 +22,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /project
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
-    && playwright install chromium --with-deps
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Create non-root user
+# Create non-root user and install Playwright browsers as that user
 RUN useradd --create-home appuser
 USER appuser
+RUN playwright install chromium
 
 COPY --chown=appuser:appuser . /project
 
