@@ -118,6 +118,17 @@ def _save_history(history: list[dict]) -> None:
 
 async def generate_daily_report(market_override: str | None = None) -> dict:
     """Generate and email today's ranking report."""
+    try:
+        return await _generate_daily_report_impl(market_override)
+    except Exception as e:
+        logger.exception("Ranking Advisor failed")
+        from app.agents.agent_email import send_error_email
+        await send_error_email("Ranking Advisor", e, f"market={market_override}")
+        raise
+
+
+async def _generate_daily_report_impl(market_override: str | None = None) -> dict:
+    """Internal implementation."""
     now = datetime.now(timezone.utc)
     weekday = now.weekday()
 

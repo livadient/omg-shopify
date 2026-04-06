@@ -67,6 +67,17 @@ async def _fetch_existing_articles() -> list[dict]:
 
 async def generate_proposal() -> dict:
     """Generate a blog post proposal and email it for approval."""
+    try:
+        return await _generate_proposal_impl()
+    except Exception as e:
+        logger.exception("Blog Writer failed")
+        from app.agents.agent_email import send_error_email
+        await send_error_email("Blog Writer", e)
+        raise
+
+
+async def _generate_proposal_impl() -> dict:
+    """Internal implementation."""
     logger.info("Blog Writer: generating proposal")
 
     products = await _fetch_products()

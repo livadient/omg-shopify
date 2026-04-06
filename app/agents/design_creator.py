@@ -49,6 +49,17 @@ Generate exactly 3 concepts with diverse styles and themes."""
 
 async def research_trends() -> list[dict]:
     """Research trends, generate designs, and create proposals for approval."""
+    try:
+        return await _research_trends_impl()
+    except Exception as e:
+        logger.exception("Design Creator failed")
+        from app.agents.agent_email import send_error_email
+        await send_error_email("Design Creator", e)
+        raise
+
+
+async def _research_trends_impl() -> list[dict]:
+    """Internal implementation."""
     logger.info("Design Creator: researching trends and generating concepts")
 
     from datetime import datetime, timezone
