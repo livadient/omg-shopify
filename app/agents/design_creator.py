@@ -181,6 +181,7 @@ async def execute_approval(proposal_id: str) -> dict:
 
 async def _send_design_email(proposals: list[dict]) -> None:
     """Send email with all design proposals for review."""
+    inline_images: dict[str, Path] = {}
     designs_html = ""
     for p in proposals:
         data = p["data"]
@@ -188,9 +189,10 @@ async def _send_design_email(proposals: list[dict]) -> None:
         reject = approval_url(p["id"], p["token"], "reject")
 
         image_html = ""
-        if data.get("image_filename"):
-            image_url = f"{settings.server_base_url}/static/proposals/{data['image_filename']}"
-            image_html = f'<img src="{image_url}" style="max-width:300px;border-radius:8px;margin-bottom:12px;" alt="{data.get("name", "design")}">'
+        if data.get("image_path") and Path(data["image_path"]).exists():
+            cid = f"design_{p['id']}"
+            inline_images[cid] = Path(data["image_path"])
+            image_html = f'<img src="cid:{cid}" style="max-width:300px;border-radius:8px;margin-bottom:12px;" alt="{data.get("name", "design")}">'
 
         error_html = ""
         if data.get("error"):
@@ -233,6 +235,7 @@ async def _send_design_email(proposals: list[dict]) -> None:
     await send_agent_email(
         subject=f"[OMG Design] {len(proposals)} new t-shirt concepts ready for review",
         html_body=html,
+        inline_images=inline_images,
     )
 
 

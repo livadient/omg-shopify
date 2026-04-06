@@ -1,8 +1,10 @@
 """Shared email sending for agents (reuses existing SMTP config)."""
 import logging
 import traceback
+from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from pathlib import Path
 
 import aiosmtplib
 
@@ -11,17 +13,40 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
-async def send_agent_email(subject: str, html_body: str) -> None:
-    """Send an HTML email to the configured recipients."""
+async def send_agent_email(
+    subject: str,
+    html_body: str,
+    inline_images: dict[str, Path] | None = None,
+) -> None:
+    """Send an HTML email to the configured recipients.
+
+    Args:
+        subject: Email subject
+        html_body: HTML body (use cid:KEY in img src for inline images)
+        inline_images: Dict of {cid_key: file_path} for inline image attachments
+    """
     if not settings.email_recipients or not settings.smtp_host:
         logger.warning("Email not configured, skipping agent email")
         return
 
-    msg = MIMEMultipart("alternative")
+    msg = MIMEMultipart("related")
     msg["Subject"] = subject
     msg["From"] = settings.email_sender
     msg["To"] = ", ".join(settings.email_recipients)
-    msg.attach(MIMEText(html_body, "html"))
+
+    msg_alt = MIMEMultipart("alternative")
+    msg.attach(msg_alt)
+    msg_alt.attach(MIMEText(html_body, "html"))
+
+    # Attach inline images
+    if inline_images:
+        for cid, filepath in inline_images.items():
+            if filepath.exists():
+                img_data = filepath.read_bytes()
+                img = MIMEImage(img_data, _subtype="png")
+                img.add_header("Content-ID", f"<{cid}>")
+                img.add_header("Content-Disposition", "inline", filename=filepath.name)
+                msg.attach(img)
 
     try:
         await aiosmtplib.send(
