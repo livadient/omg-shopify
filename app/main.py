@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 
+import httpx
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
