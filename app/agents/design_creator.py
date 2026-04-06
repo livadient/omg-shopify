@@ -1,4 +1,5 @@
 """Agent 2: Trend Research & Design Creator — researches trends, generates designs, creates products."""
+import json
 import logging
 import shutil
 from pathlib import Path
@@ -11,6 +12,8 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
+DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+PAST_DESIGNS_FILE = DATA_DIR / "past_designs.json"
 
 SYSTEM_PROMPT = """You are a creative director and trend researcher for OMG (omg.com.cy), an online t-shirt brand. Your target market is young adults (18-35) globally.
 
@@ -58,6 +61,52 @@ Output as JSON:
 Generate exactly 5 concepts — one of each type. All must be original."""
 
 
+def _load_past_designs() -> list[dict]:
+    """Load previously generated design concepts to avoid repetition."""
+    if not PAST_DESIGNS_FILE.exists():
+        return []
+    try:
+        return json.loads(PAST_DESIGNS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def _save_past_designs(past: list[dict]) -> None:
+    """Save design history. Keep the last 100 entries to avoid unbounded growth."""
+    DATA_DIR.mkdir(exist_ok=True)
+    past = past[-100:]
+    PAST_DESIGNS_FILE.write_text(json.dumps(past, indent=2), encoding="utf-8")
+
+
+def _record_designs(concepts: list[dict]) -> None:
+    """Record newly generated concepts to the history file."""
+    from datetime import datetime, timezone
+    past = _load_past_designs()
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    for c in concepts:
+        past.append({
+            "date": date_str,
+            "name": c.get("name", ""),
+            "type": c.get("type", ""),
+            "description": c.get("description", "")[:200],
+        })
+    _save_past_designs(past)
+
+
+def _build_exclusion_prompt() -> str:
+    """Build a prompt section listing past designs to avoid."""
+    past = _load_past_designs()
+    if not past:
+        return ""
+    # Show the last 50 for context
+    recent = past[-50:]
+    lines = [f"- [{e['date']}] ({e['type']}) {e['name']}: {e['description'][:120]}" for e in recent]
+    return (
+        "\n\nIMPORTANT — DO NOT repeat or closely resemble any of these previously generated designs. "
+        "Come up with completely fresh, different ideas:\n" + "\n".join(lines)
+    )
+
+
 async def research_trends() -> list[dict]:
     """Research trends, generate designs, and create proposals for approval."""
     try:
@@ -97,6 +146,8 @@ Summarize the top 10-15 specific trends you find, with concrete examples. Focus 
     logger.info(f"Trend research complete: {len(trend_research)} chars")
 
     # Step 2: Generate design concepts informed by real trends
+    exclusion_prompt = _build_exclusion_prompt()
+
     user_prompt = f"""Today's date: {date_str}
 Store: OMG (omg.com.cy), Cyprus-based t-shirt brand
 Markets: Cyprus, Greece, Europe
@@ -107,7 +158,7 @@ CURRENT T-SHIRT TRENDS (from real-time research):
 
 Based on these REAL current trends, generate 5 original, commercially viable design concepts (one per type).
 Remember: only concept #1 (cyprus type) should be Cyprus-themed. Concepts #2-#5 must be purely global — no Mediterranean, no Cyprus, no Greece references.
-Be specific in the design description so an AI image generator can create it accurately."""
+Be specific in the design description so an AI image generator can create it accurately.{exclusion_prompt}"""
 
     # Get design concepts from Claude
     result = await llm_client.generate_json(
@@ -122,19 +173,21 @@ Be specific in the design description so an AI image generator can create it acc
         logger.warning("No design concepts generated")
         return []
 
+    # Record concepts to history so they won't be repeated
+    _record_designs(concepts)
+
     # Generate images for each concept
     proposals = []
     for concept in concepts:
         try:
-            # Generate the design image
-            from app.agents.image_client import generate_design, remove_background
+            # Generate the design image (no background removal — white bg is fine for printing)
+            from app.agents.image_client import generate_design
             image_path = await generate_design(
                 concept=concept["description"],
                 style=concept.get("style", "bold graphic illustration"),
             )
 
-            # Try background removal for print-ready version
-            clean_path = await remove_background(image_path)
+            clean_path = image_path
 
             # Create proposal
             concept["image_path"] = str(clean_path)
