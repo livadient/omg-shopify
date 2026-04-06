@@ -281,8 +281,15 @@ async def _process_order_background(
 
     for item in items_mapped:
         source_handle = handle_map.get(item["source_variant_id"], "")
-        product_type = "female" if "female" in source_handle else "male"
-        size = item["variant_title"]
+        variant_title = item["variant_title"]
+
+        # Handle both old format ("L") and new Gender+Size format ("Male / L")
+        if " / " in variant_title:
+            gender_str, size = variant_title.split(" / ", 1)
+            product_type = "female" if "female" in gender_str.lower() else "male"
+        else:
+            product_type = "female" if "female" in source_handle else "male"
+            size = variant_title
 
         # Extract shipping details from order
         shipping_address = order.get("shipping_address") or {}

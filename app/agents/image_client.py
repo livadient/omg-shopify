@@ -35,12 +35,14 @@ async def generate_design(
     client = _get_client()
 
     prompt = (
-        f"Create a t-shirt design: {concept}. "
+        f"Create a standalone graphic artwork for printing: {concept}. "
         f"Style: {style}. "
-        "Requirements: solid white background, high contrast, clean edges suitable "
-        "for DTG (direct-to-garment) printing. Bold and eye-catching. "
-        "No copyrighted characters or logos. The design should be centered and "
-        "work well printed on the front of a t-shirt."
+        "IMPORTANT: This is ONLY the graphic/artwork/illustration itself — "
+        "do NOT show a t-shirt, clothing, mannequin, or any garment. "
+        "Just the design artwork on a plain solid white background. "
+        "Requirements: solid white background, high contrast, clean sharp edges, "
+        "bold and eye-catching artwork suitable for screen printing. "
+        "No copyrighted characters or logos. Centered composition."
     )
 
     logger.info(f"Generating design: {concept[:80]}...")

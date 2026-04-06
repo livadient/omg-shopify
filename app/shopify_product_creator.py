@@ -11,23 +11,23 @@ logger = logging.getLogger(__name__)
 
 ADMIN_API_VERSION = "2024-01"
 
-# Standard pricing matching existing OMG products
-MALE_VARIANTS = [
-    {"option1": "S", "price": "30.00"},
-    {"option1": "M", "price": "30.00"},
-    {"option1": "L", "price": "30.00"},
-    {"option1": "XL", "price": "30.00"},
-    {"option1": "2XL", "price": "35.00"},
-    {"option1": "3XL", "price": "37.00"},
-    {"option1": "4XL", "price": "39.50"},
-    {"option1": "5XL", "price": "39.50"},
-]
-
-FEMALE_VARIANTS = [
-    {"option1": "S", "price": "30.00"},
-    {"option1": "M", "price": "30.00"},
-    {"option1": "L", "price": "30.00"},
-    {"option1": "XL", "price": "30.00"},
+# Variants: Gender x Size with pricing
+# Male sizes S-5XL, Female sizes S-XL
+VARIANTS = [
+    # Male
+    {"option1": "Male", "option2": "S", "price": "30.00"},
+    {"option1": "Male", "option2": "M", "price": "30.00"},
+    {"option1": "Male", "option2": "L", "price": "30.00"},
+    {"option1": "Male", "option2": "XL", "price": "30.00"},
+    {"option1": "Male", "option2": "2XL", "price": "35.00"},
+    {"option1": "Male", "option2": "3XL", "price": "37.00"},
+    {"option1": "Male", "option2": "4XL", "price": "39.50"},
+    {"option1": "Male", "option2": "5XL", "price": "39.50"},
+    # Female
+    {"option1": "Female", "option2": "S", "price": "30.00"},
+    {"option1": "Female", "option2": "M", "price": "30.00"},
+    {"option1": "Female", "option2": "L", "price": "30.00"},
+    {"option1": "Female", "option2": "XL", "price": "30.00"},
 ]
 
 # TShirtJunkies target product IDs for mapping
@@ -60,25 +60,20 @@ def _headers() -> dict:
 async def create_product(
     title: str,
     body_html: str,
-    product_type: str = "male",
     tags: str = "",
     image_path: Path | None = None,
     published: bool = True,
 ) -> dict:
-    """Create a product on the OMG Shopify store with size variants.
+    """Create a product on OMG Shopify with Male/Female + Size variants.
 
-    Args:
-        title: Product title
-        body_html: Product description HTML
-        product_type: "male" or "female" (determines variants and pricing)
-        tags: Comma-separated tags
-        image_path: Path to product image (uploaded as base64)
-        published: Whether to publish immediately
-
-    Returns:
-        Created product dict from Shopify API
+    All products get both male (S-5XL) and female (S-XL) variants.
+    Inventory tracking is disabled (print-on-demand, never sold out).
     """
-    variants = MALE_VARIANTS if product_type == "male" else FEMALE_VARIANTS
+    # Add inventory_policy: "continue" to each variant so they're always purchasable
+    variants = [
+        {**v, "inventory_policy": "continue", "inventory_management": None}
+        for v in VARIANTS
+    ]
 
     product_data = {
         "product": {
@@ -88,12 +83,12 @@ async def create_product(
             "product_type": "T-Shirt",
             "tags": tags,
             "published": published,
-            "options": [{"name": "Size"}],
+            "options": [{"name": "Gender"}, {"name": "Size"}],
             "variants": variants,
         }
     }
 
-    # Upload image if provided
+    # Upload design image if provided
     if image_path and image_path.exists():
         img_bytes = image_path.read_bytes()
         img_b64 = base64.b64encode(img_bytes).decode("utf-8")
@@ -110,66 +105,150 @@ async def create_product(
         )
         resp.raise_for_status()
         product = resp.json().get("product", {})
-        logger.info(f"Created product: {product.get('id')} — {title}")
+        logger.info(f"Created product: {product.get('id')} — {title} ({len(product.get('variants', []))} variants)")
+
+        # Disable inventory tracking for all variants
+        for variant in product.get("variants", []):
+            inv_item_id = variant.get("inventory_item_id")
+            if inv_item_id:
+                try:
+                    await client.put(
+                        _admin_url(f"inventory_items/{inv_item_id}.json"),
+                        headers=_headers(),
+                        json={"inventory_item": {"id": inv_item_id, "tracked": False}},
+                        timeout=15,
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to disable tracking for {inv_item_id}: {e}")
+
         return product
 
 
-async def create_mapping_for_product(
-    omg_product: dict,
-    product_type: str = "male",
-    design_image: str = "front_design.png",
-) -> dict:
-    """Create a product mapping between the new OMG product and TShirtJunkies.
+async def upload_product_image(product_id: int, image_path: Path, alt: str = "") -> dict:
+    """Upload an additional image to an existing product."""
+    img_bytes = image_path.read_bytes()
+    img_b64 = base64.b64encode(img_bytes).decode("utf-8")
 
-    Uses the existing TJ base products (classic tee or women's tee) and matches
-    variants by size, similar to mapper.py logic.
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            _admin_url(f"products/{product_id}/images.json"),
+            headers=_headers(),
+            json={"image": {"attachment": img_b64, "filename": image_path.name, "alt": alt}},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        return resp.json().get("image", {})
+
+
+async def create_mappings_for_product(
+    omg_product: dict,
+    design_image: str = "front_design.png",
+) -> list[dict]:
+    """Create TWO product mappings: male variants → TJ Classic Tee, female variants → TJ Women's Tee.
+
+    OMG product has Gender+Size options (e.g. "Male / L", "Female / S").
+    Each gender maps to a different TJ product.
     """
     from app.mapper import load_mappings, save_mappings
-    from app.models import MappingConfig, ProductMapping, VariantMapping
+    from app.models import ProductMapping, VariantMapping
     from app.shopify_client import fetch_product_by_handle
 
-    tj_info = TJ_PRODUCTS.get(product_type, TJ_PRODUCTS["male"])
+    # Group OMG variants by gender
+    male_variants = []
+    female_variants = []
+    for v in omg_product.get("variants", []):
+        gender = v.get("option1", "").lower()
+        if "female" in gender:
+            female_variants.append(v)
+        else:
+            male_variants.append(v)
 
-    # Fetch TJ product to get variant IDs
-    tj_product = await fetch_product_by_handle(
-        settings.tshirtjunkies_base_url, tj_info["handle"]
-    )
-    if not tj_product:
-        raise ValueError(f"Could not fetch TJ product: {tj_info['handle']}")
+    mappings = []
+    for gender, omg_variants, tj_key in [
+        ("male", male_variants, "male"),
+        ("female", female_variants, "female"),
+    ]:
+        if not omg_variants:
+            continue
 
-    # Build variant mapping by size
-    tj_variants_by_size = {}
-    for v in tj_product.get("variants", []):
-        size = v.get("option1", "")
-        tj_variants_by_size[size] = v
+        tj_info = TJ_PRODUCTS[tj_key]
+        tj_product = await fetch_product_by_handle(
+            settings.tshirtjunkies_base_url, tj_info["handle"]
+        )
+        if not tj_product:
+            logger.warning(f"Could not fetch TJ product: {tj_info['handle']}")
+            continue
 
-    variant_mappings = []
-    for omg_variant in omg_product.get("variants", []):
-        size = omg_variant.get("option1", "")
-        tj_variant = tj_variants_by_size.get(size)
-        if tj_variant:
-            variant_mappings.append(VariantMapping(
-                source_variant_id=omg_variant["id"],
-                source_title=size,
-                target_variant_id=tj_variant["id"],
-                target_title=size,
-                target_price=str(tj_variant.get("price", "0")),
-            ))
+        # Match by size (option2 on OMG, option1 on TJ)
+        tj_by_size = {v.get("option1", ""): v for v in tj_product.get("variants", [])}
 
-    mapping = ProductMapping(
-        source_handle=omg_product["handle"],
-        source_title=omg_product["title"],
-        target_handle=tj_info["handle"],
-        target_title=tj_product.get("title", tj_info["handle"]),
-        target_product_id=tj_info["product_id"],
-        variants=variant_mappings,
-        design_image=design_image,
-    )
+        variant_mappings = []
+        for omg_v in omg_variants:
+            size = omg_v.get("option2", "")
+            tj_v = tj_by_size.get(size)
+            if tj_v:
+                variant_mappings.append(VariantMapping(
+                    source_variant_id=omg_v["id"],
+                    source_title=f"{omg_v.get('option1', '')} / {size}",
+                    target_variant_id=tj_v["id"],
+                    target_title=size,
+                    target_price=str(tj_v.get("price", "0")),
+                ))
 
-    # Add to existing mappings
+        mapping = ProductMapping(
+            source_handle=omg_product["handle"],
+            source_title=omg_product["title"],
+            target_handle=tj_info["handle"],
+            target_title=tj_product.get("title", tj_info["handle"]),
+            target_product_id=tj_info["product_id"],
+            variants=variant_mappings,
+            design_image=design_image,
+        )
+        mappings.append(mapping)
+        logger.info(f"Mapping: {omg_product['handle']} ({gender}) → {tj_info['handle']} ({len(variant_mappings)} variants)")
+
+    # Save all mappings
     config = load_mappings()
-    config.mappings.append(mapping)
+    config.mappings.extend(mappings)
     save_mappings(config)
 
-    logger.info(f"Mapping created: {omg_product['handle']} → {tj_info['handle']} ({len(variant_mappings)} variants)")
-    return mapping.model_dump()
+    return [m.model_dump() for m in mappings]
+
+
+async def fetch_mockup_from_qstomizer(
+    design_image_path: str,
+    product_type: str = "male",
+    size: str = "L",
+) -> str | None:
+    """Run Qstomizer automation and return the mockup image URL.
+
+    The mockup is a rendered t-shirt image from TShirtJunkies/Qstomizer
+    that shows what the printed product will look like.
+    """
+    from app.qstomizer_automation import customize_and_add_to_cart
+
+    try:
+        result = await customize_and_add_to_cart(
+            product_type=product_type,
+            size=size,
+            color="White",
+            image_path=design_image_path,
+            quantity=1,
+            headless=True,
+        )
+        mockup_url = result.get("mockup_url")
+        if mockup_url:
+            logger.info(f"Got {product_type} mockup: {mockup_url}")
+        return mockup_url
+    except Exception as e:
+        logger.error(f"Failed to get {product_type} mockup: {e}")
+        return None
+
+
+async def download_image(url: str, dest: Path) -> Path:
+    """Download an image from URL to a local file."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url, timeout=30, follow_redirects=True)
+        resp.raise_for_status()
+        dest.write_bytes(resp.content)
+        return dest

@@ -124,16 +124,18 @@ Be specific in the design description so an AI image generator can create it acc
 
 
 async def execute_approval(proposal_id: str) -> dict:
-    """Create a Shopify product and mapping for an approved design."""
+    """Create a Shopify product with male+female variants, fetch TJ mockups, and create mappings."""
     from app.agents.approval import get_proposal, update_status
-    from app.shopify_product_creator import create_product, create_mapping_for_product
+    from app.shopify_product_creator import (
+        create_product, create_mappings_for_product,
+        fetch_mockup_from_qstomizer, upload_product_image, download_image,
+    )
 
     proposal = get_proposal(proposal_id)
     if not proposal:
         raise ValueError(f"Proposal {proposal_id} not found")
 
     data = proposal["data"]
-    product_type = data.get("product_type", "male")
     image_path = Path(data.get("image_path", "")) if data.get("image_path") else None
 
     # Generate product description
@@ -144,38 +146,54 @@ async def execute_approval(proposal_id: str) -> dict:
         temperature=0.7,
     )
 
-    # Create the product on OMG Shopify
+    # Create the product on OMG Shopify (male + female variants in one product)
     product = await create_product(
         title=data.get("suggested_title", data.get("name", "New Design Tee")),
         body_html=description,
-        product_type=product_type,
         tags=data.get("suggested_tags", "graphic tee"),
         image_path=image_path,
         published=True,
     )
 
+    product_id = product.get("id")
+    handle = product.get("handle", "")
+
     # Copy design image to static/ for Playwright automation
-    design_filename = f"design_{product['handle']}.png"
+    design_filename = f"design_{handle}.png"
     if image_path and image_path.exists():
         dest = STATIC_DIR / design_filename
         shutil.copy2(image_path, dest)
         logger.info(f"Design image copied to {dest}")
 
-    # Create mapping to TShirtJunkies
-    mapping = await create_mapping_for_product(
+    # Create mappings (male → TJ Classic Tee, female → TJ Women's Tee)
+    mappings = await create_mappings_for_product(
         omg_product=product,
-        product_type=product_type,
         design_image=design_filename,
     )
 
+    # Fetch TJ mockup images via Qstomizer and upload to OMG product
+    design_path = str(STATIC_DIR / design_filename)
+    for ptype, size, label in [("male", "L", "Male"), ("female", "M", "Female")]:
+        logger.info(f"Fetching {label} mockup from TShirtJunkies...")
+        mockup_url = await fetch_mockup_from_qstomizer(design_path, ptype, size)
+        if mockup_url:
+            try:
+                mockup_path = STATIC_DIR / "proposals" / f"mockup_{handle}_{ptype}.png"
+                mockup_path.parent.mkdir(exist_ok=True)
+                await download_image(mockup_url, mockup_path)
+                await upload_product_image(product_id, mockup_path, alt=f"{label} T-Shirt Mockup")
+                logger.info(f"Uploaded {label} mockup to product {product_id}")
+            except Exception as e:
+                logger.warning(f"Failed to upload {label} mockup: {e}")
+
     update_status(proposal_id, "approved")
-    logger.info(f"Design approved: product {product.get('id')} created + mapped")
+    logger.info(f"Design approved: product {product_id} created with {len(mappings)} mappings + mockups")
 
     return {
-        "product_id": product.get("id"),
-        "product_handle": product.get("handle"),
-        "product_url": f"https://omg.com.cy/products/{product.get('handle', '')}",
-        "mapping": mapping,
+        "product_id": product_id,
+        "product_handle": handle,
+        "product_url": f"https://omg.com.cy/products/{handle}",
+        "mappings": mappings,
     }
 
 
