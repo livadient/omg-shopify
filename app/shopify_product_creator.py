@@ -451,8 +451,13 @@ async def create_mappings_for_product(
         mappings.append(mapping)
         logger.info(f"Mapping: {omg_product['handle']} ({gender}) → {tj_info['handle']} ({len(variant_mappings)} variants)")
 
-    # Save all mappings
+    # Save mappings — replace any existing ones for the same source+target handle pair
     config = load_mappings()
+    new_keys = {(m.source_handle, m.target_handle) for m in mappings}
+    config.mappings = [
+        m for m in config.mappings
+        if (m.source_handle, m.target_handle) not in new_keys
+    ]
     config.mappings.extend(mappings)
     save_mappings(config)
 
