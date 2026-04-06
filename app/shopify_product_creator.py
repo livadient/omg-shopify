@@ -13,21 +13,22 @@ ADMIN_API_VERSION = "2024-01"
 
 # Variants: Gender x Size with pricing
 # Male sizes S-5XL, Female sizes S-XL
+# inventory_management=null means Shopify won't track stock (always available) — correct for print-on-demand
 VARIANTS = [
     # Male
-    {"option1": "Male", "option2": "S", "price": "30.00"},
-    {"option1": "Male", "option2": "M", "price": "30.00"},
-    {"option1": "Male", "option2": "L", "price": "30.00"},
-    {"option1": "Male", "option2": "XL", "price": "30.00"},
-    {"option1": "Male", "option2": "2XL", "price": "35.00"},
-    {"option1": "Male", "option2": "3XL", "price": "37.00"},
-    {"option1": "Male", "option2": "4XL", "price": "39.50"},
-    {"option1": "Male", "option2": "5XL", "price": "39.50"},
+    {"option1": "Male", "option2": "S", "price": "30.00", "inventory_management": None},
+    {"option1": "Male", "option2": "M", "price": "30.00", "inventory_management": None},
+    {"option1": "Male", "option2": "L", "price": "30.00", "inventory_management": None},
+    {"option1": "Male", "option2": "XL", "price": "30.00", "inventory_management": None},
+    {"option1": "Male", "option2": "2XL", "price": "35.00", "inventory_management": None},
+    {"option1": "Male", "option2": "3XL", "price": "37.00", "inventory_management": None},
+    {"option1": "Male", "option2": "4XL", "price": "39.50", "inventory_management": None},
+    {"option1": "Male", "option2": "5XL", "price": "39.50", "inventory_management": None},
     # Female
-    {"option1": "Female", "option2": "S", "price": "30.00"},
-    {"option1": "Female", "option2": "M", "price": "30.00"},
-    {"option1": "Female", "option2": "L", "price": "30.00"},
-    {"option1": "Female", "option2": "XL", "price": "30.00"},
+    {"option1": "Female", "option2": "S", "price": "30.00", "inventory_management": None},
+    {"option1": "Female", "option2": "M", "price": "30.00", "inventory_management": None},
+    {"option1": "Female", "option2": "L", "price": "30.00", "inventory_management": None},
+    {"option1": "Female", "option2": "XL", "price": "30.00", "inventory_management": None},
 ]
 
 # TShirtJunkies target product IDs for mapping
@@ -63,12 +64,11 @@ async def create_product(
     tags: str = "",
     image_path: Path | None = None,
     published: bool = True,
-    stock_quantity: int = 100,
 ) -> dict:
     """Create a product on OMG Shopify with Male/Female + Size variants.
 
     All products get both male (S-5XL) and female (S-XL) variants.
-    Inventory is set to stock_quantity at the Cyprus warehouse.
+    Inventory tracking is disabled (print-on-demand — always available).
     Design image is NOT uploaded here — it's added last after mockups.
     """
     variants = [{**v} for v in VARIANTS]
@@ -96,52 +96,7 @@ async def create_product(
         resp.raise_for_status()
         product = resp.json().get("product", {})
         logger.info(f"Created product: {product.get('id')} — {title} ({len(product.get('variants', []))} variants)")
-
-        # Set inventory at Cyprus location
-        location_id = await _get_cyprus_location(client)
-        if location_id:
-            for variant in product.get("variants", []):
-                inv_item_id = variant.get("inventory_item_id")
-                if inv_item_id:
-                    try:
-                        await client.post(
-                            _admin_url("inventory_levels/set.json"),
-                            headers=_headers(),
-                            json={
-                                "location_id": location_id,
-                                "inventory_item_id": inv_item_id,
-                                "available": stock_quantity,
-                            },
-                            timeout=15,
-                        )
-                    except Exception as e:
-                        logger.warning(f"Failed to set inventory for {inv_item_id}: {e}")
-            logger.info(f"Inventory set: {stock_quantity} units per variant at location {location_id}")
-        else:
-            logger.warning("No location found — inventory not set, product may show sold out")
-
         return product
-
-
-async def _get_cyprus_location(client: httpx.AsyncClient) -> int | None:
-    """Get the Cyprus warehouse location ID."""
-    try:
-        resp = await client.get(
-            _admin_url("locations.json"),
-            headers=_headers(),
-            timeout=15,
-        )
-        resp.raise_for_status()
-        locations = resp.json().get("locations", [])
-        if locations:
-            # Return first active location (Cyprus warehouse)
-            for loc in locations:
-                if loc.get("active"):
-                    logger.info(f"Using location: {loc['name']} (ID: {loc['id']})")
-                    return loc["id"]
-    except Exception as e:
-        logger.warning(f"Failed to fetch locations: {e}")
-    return None
 
 
 async def upload_product_image(product_id: int, image_path: Path, alt: str = "") -> dict:

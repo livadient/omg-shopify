@@ -25,23 +25,33 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # Agent 1: Blog Writer — Tue & Fri at 10:00
+    # Agent 1: Blog Writer — Tue & Fri at 05:00
     from app.agents.blog_writer import generate_proposal
     scheduler.add_job(
         generate_proposal,
-        CronTrigger(day_of_week="tue,fri", hour=10, minute=0, timezone=tz),
+        CronTrigger(day_of_week="tue,fri", hour=5, minute=0, timezone=tz),
         id="blog_writer",
         name="SEO Blog Writer",
         replace_existing=True,
     )
 
-    # Agent 2: Design Creator — daily Mon-Fri at 10:00
+    # Agent 2: Design Creator — daily Mon-Fri at 04:00
     from app.agents.design_creator import research_trends
     scheduler.add_job(
         research_trends,
-        CronTrigger(day_of_week="mon-fri", hour=10, minute=0, timezone=tz),
+        CronTrigger(day_of_week="mon-fri", hour=4, minute=0, timezone=tz),
         id="design_creator",
         name="Trend Research & Design Creator",
+        replace_existing=True,
+    )
+
+    # SEO optimization — daily Mon-Fri at 04:30
+    from app.seo_management import run_all as seo_run_all
+    scheduler.add_job(
+        seo_run_all,
+        CronTrigger(day_of_week="mon-fri", hour=4, minute=30, timezone=tz),
+        id="seo_optimizer",
+        name="SEO Optimization (all tasks)",
         replace_existing=True,
     )
 

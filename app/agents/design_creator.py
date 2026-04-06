@@ -27,19 +27,22 @@ Think about:
 
 For each concept, provide enough detail for an AI image generator to create the design.
 
-You MUST generate exactly 4 concepts, one of each type:
+You MUST generate exactly 5 concepts, one of each type:
 
-1. **Graphic Design** — A visually striking illustration or artwork (nature, culture, abstract, lifestyle). No text on the design.
-2. **Slogan/Quote** — A bold typographic design featuring a funny, clever, or inspirational quote or slogan. The text IS the design. Think punchy one-liners, witty observations, or motivational statements.
-3. **Funny Design** — A humorous illustration that makes people laugh or smile. Visual comedy, absurd situations, clever visual puns, meme-inspired (but original) artwork.
-4. **Geeky/Nerd Design** — Something for tech lovers, gamers, science nerds, programmers, anime fans, or sci-fi enthusiasts. Clever references, pixel art, code jokes, retro gaming, science humor, or fantasy/D&D themes. Must be original (no copyrighted characters).
+1. **Cyprus/Local Design** — A design that celebrates Cyprus, its culture, landmarks, beaches, lifestyle, Greek language, or local humor. Something a Cypriot would proudly wear or a tourist would buy as a souvenir. Can include Greek text. Think Ayia Napa, Limassol, halloumi, Cyprus cats, Mediterranean vibes, Cypriot slang, etc.
+2. **Global Trend Design** — A design based on whatever is trending RIGHT NOW worldwide. This should have absolutely nothing to do with Cyprus, the Mediterranean, or any specific country. Pure global internet culture, viral moments, or worldwide pop culture trends that would sell anywhere on the planet.
+3. **Slogan/Quote** — A bold typographic design featuring a funny, clever, or inspirational quote or slogan. The text IS the design. Think punchy one-liners, witty observations, or motivational statements. NOT Cyprus-related.
+4. **Funny Design** — A humorous illustration that makes people laugh or smile. Visual comedy, absurd situations, clever visual puns, meme-inspired (but original) artwork. NOT Cyprus-related.
+5. **Geeky/Nerd Design** — Something for tech lovers, gamers, science nerds, programmers, anime fans, or sci-fi enthusiasts. Clever references, pixel art, code jokes, retro gaming, science humor, or fantasy/D&D themes. Must be original (no copyrighted characters). NOT Cyprus-related.
+
+IMPORTANT: Only concept #1 should be Cyprus/Mediterranean themed. Concepts #2-#5 must be globally appealing with NO references to Cyprus, Mediterranean, Greece, or any specific region.
 
 Output as JSON:
 {
   "concepts": [
     {
       "name": "Short concept name",
-      "type": "graphic|slogan|funny|geeky",
+      "type": "cyprus|global-trend|slogan|funny|geeky",
       "description": "Detailed description of the design for image generation",
       "style": "art style (e.g., minimalist vector, vintage retro, bold graphic, watercolor, line art)",
       "text_on_shirt": "Any text/slogan to include (or empty string if none)",
@@ -52,7 +55,7 @@ Output as JSON:
   ]
 }
 
-Generate exactly 4 concepts — one graphic, one slogan, one funny, one geeky. All must be original."""
+Generate exactly 5 concepts — one of each type. All must be original."""
 
 
 async def research_trends() -> list[dict]:
@@ -102,8 +105,8 @@ Current season: {season}
 CURRENT T-SHIRT TRENDS (from real-time research):
 {trend_research}
 
-Based on these REAL current trends, generate 4 original, commercially viable design concepts.
-Each concept should be inspired by what's actually trending right now globally.
+Based on these REAL current trends, generate 5 original, commercially viable design concepts (one per type).
+Remember: only concept #1 (cyprus type) should be Cyprus-themed. Concepts #2-#5 must be purely global — no Mediterranean, no Cyprus, no Greece references.
 Be specific in the design description so an AI image generator can create it accurately."""
 
     # Get design concepts from Claude
@@ -136,6 +139,11 @@ Be specific in the design description so an AI image generator can create it acc
             # Create proposal
             concept["image_path"] = str(clean_path)
             concept["image_filename"] = clean_path.name
+
+            # Pre-cache TShirtJunkies mockups so approval is near-instant
+            cached_mockups = await _precache_mockups(str(clean_path), concept.get("name", ""))
+            concept["cached_mockups"] = cached_mockups
+
             proposal = create_proposal("design", concept)
             proposals.append(proposal)
 
@@ -153,6 +161,34 @@ Be specific in the design description so an AI image generator can create it acc
 
     logger.info(f"Design Creator: {len(proposals)} proposals created")
     return proposals
+
+
+async def _precache_mockups(design_image_path: str, concept_name: str) -> dict:
+    """Pre-generate TShirtJunkies mockups via Qstomizer so approval is near-instant.
+
+    Returns dict with cached mockup file paths for male and female.
+    """
+    from app.shopify_product_creator import fetch_mockup_from_qstomizer, download_image
+
+    cached = {}
+    proposals_dir = STATIC_DIR / "proposals"
+    proposals_dir.mkdir(exist_ok=True)
+
+    for ptype, size in [("male", "L"), ("female", "M")]:
+        try:
+            logger.info(f"Pre-caching {ptype} mockup for '{concept_name}'...")
+            mockup_url = await fetch_mockup_from_qstomizer(design_image_path, ptype, size)
+            if mockup_url:
+                # Download and save locally so it survives across sessions
+                filename = f"mockup_cache_{Path(design_image_path).stem}_{ptype}.png"
+                local_path = proposals_dir / filename
+                await download_image(mockup_url, local_path)
+                cached[ptype] = {"url": mockup_url, "path": str(local_path)}
+                logger.info(f"Cached {ptype} mockup: {local_path}")
+        except Exception as e:
+            logger.warning(f"Failed to pre-cache {ptype} mockup for '{concept_name}': {e}")
+
+    return cached
 
 
 async def execute_approval(proposal_id: str) -> dict:
@@ -204,19 +240,30 @@ async def execute_approval(proposal_id: str) -> dict:
     )
 
     # Upload images in order: 1) Male mockup, 2) Female mockup, 3) Design artwork
+    # Use pre-cached mockups from design generation if available
+    cached_mockups = data.get("cached_mockups", {})
     design_path = str(STATIC_DIR / design_filename)
     for ptype, size, label in [("male", "L", "Male"), ("female", "M", "Female")]:
-        logger.info(f"Fetching {label} mockup from TShirtJunkies...")
-        mockup_url = await fetch_mockup_from_qstomizer(design_path, ptype, size)
-        if mockup_url:
-            try:
-                mockup_path = STATIC_DIR / "proposals" / f"mockup_{handle}_{ptype}.png"
-                mockup_path.parent.mkdir(exist_ok=True)
-                await download_image(mockup_url, mockup_path)
-                await upload_product_image(product_id, mockup_path, alt=f"{label} T-Shirt Mockup")
-                logger.info(f"Uploaded {label} mockup to product {product_id}")
-            except Exception as e:
-                logger.warning(f"Failed to upload {label} mockup: {e}")
+        cached = cached_mockups.get(ptype, {})
+        cached_path = Path(cached["path"]) if cached.get("path") else None
+
+        if cached_path and cached_path.exists():
+            logger.info(f"Using pre-cached {label} mockup: {cached_path}")
+            mockup_path = cached_path
+        else:
+            logger.info(f"No cached mockup for {label}, fetching from TShirtJunkies...")
+            mockup_url = await fetch_mockup_from_qstomizer(design_path, ptype, size)
+            if not mockup_url:
+                continue
+            mockup_path = STATIC_DIR / "proposals" / f"mockup_{handle}_{ptype}.png"
+            mockup_path.parent.mkdir(exist_ok=True)
+            await download_image(mockup_url, mockup_path)
+
+        try:
+            await upload_product_image(product_id, mockup_path, alt=f"{label} T-Shirt Mockup")
+            logger.info(f"Uploaded {label} mockup to product {product_id}")
+        except Exception as e:
+            logger.warning(f"Failed to upload {label} mockup: {e}")
 
     # Upload the original design artwork as the last image
     if image_path and image_path.exists():
