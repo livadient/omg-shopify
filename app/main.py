@@ -1105,6 +1105,47 @@ async def debug_inventory(product_id: int):
         return JSONResponse(status_code=500, content={"error": str(e), "traceback": traceback.format_exc()})
 
 
+@app.post("/debug-fix-variant/{variant_id}")
+async def debug_fix_variant(variant_id: int):
+    """Debug: try to fix a single variant and return all raw API responses."""
+    domain = settings.omg_shopify_domain
+    base = f"https://{domain}/admin/api/2024-01"
+    hdrs = {"X-Shopify-Access-Token": settings.omg_shopify_admin_token, "Content-Type": "application/json"}
+    steps = []
+
+    async with httpx.AsyncClient() as client:
+        # Step 1: Get variant
+        r = await client.get(f"{base}/variants/{variant_id}.json", headers=hdrs, timeout=30)
+        variant = r.json().get("variant", {})
+        steps.append({"step": "get_variant", "status": r.status_code, "inventory_item_id": variant.get("inventory_item_id"), "inventory_management": variant.get("inventory_management"), "inventory_policy": variant.get("inventory_policy")})
+
+        inv_item_id = variant.get("inventory_item_id")
+
+        # Step 2: Get locations
+        r = await client.get(f"{base}/locations.json", headers=hdrs, timeout=30)
+        locations = r.json().get("locations", [])
+        loc_id = locations[0]["id"] if locations else None
+        steps.append({"step": "get_locations", "status": r.status_code, "location_id": loc_id, "count": len(locations)})
+
+        # Step 3: Update variant to shopify managed
+        r = await client.put(f"{base}/variants/{variant_id}.json", headers=hdrs, json={"variant": {"id": variant_id, "inventory_management": "shopify", "inventory_policy": "continue"}}, timeout=30)
+        steps.append({"step": "update_variant", "status": r.status_code, "body": r.text[:300]})
+
+        # Step 4: Connect inventory to location
+        r = await client.post(f"{base}/inventory_levels/connect.json", headers=hdrs, json={"location_id": loc_id, "inventory_item_id": inv_item_id}, timeout=30)
+        steps.append({"step": "connect", "status": r.status_code, "body": r.text[:300]})
+
+        # Step 5: Set inventory level
+        r = await client.post(f"{base}/inventory_levels/set.json", headers=hdrs, json={"location_id": loc_id, "inventory_item_id": inv_item_id, "available": 999}, timeout=30)
+        steps.append({"step": "set_level", "status": r.status_code, "body": r.text[:300]})
+
+        # Step 6: Verify
+        r = await client.get(f"{base}/inventory_levels.json?inventory_item_ids={inv_item_id}", headers=hdrs, timeout=30)
+        steps.append({"step": "verify_levels", "status": r.status_code, "body": r.text[:500]})
+
+    return {"variant_id": variant_id, "steps": steps}
+
+
 @app.post("/fix-sold-out/{product_id}")
 async def fix_sold_out(product_id: int):
     """Fix a sold-out product by setting inventory_policy=continue on all variants."""
