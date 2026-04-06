@@ -146,12 +146,12 @@ async def execute_approval(proposal_id: str) -> dict:
         temperature=0.7,
     )
 
-    # Create the product on OMG Shopify (male + female variants in one product)
+    # Create the product on OMG Shopify (male + female variants, no image yet)
     product = await create_product(
         title=data.get("suggested_title", data.get("name", "New Design Tee")),
         body_html=description,
         tags=data.get("suggested_tags", "graphic tee"),
-        image_path=image_path,
+        image_path=None,  # images added in order below
         published=True,
     )
 
@@ -171,7 +171,7 @@ async def execute_approval(proposal_id: str) -> dict:
         design_image=design_filename,
     )
 
-    # Fetch TJ mockup images via Qstomizer and upload to OMG product
+    # Upload images in order: 1) Male mockup, 2) Female mockup, 3) Design artwork
     design_path = str(STATIC_DIR / design_filename)
     for ptype, size, label in [("male", "L", "Male"), ("female", "M", "Female")]:
         logger.info(f"Fetching {label} mockup from TShirtJunkies...")
@@ -185,6 +185,14 @@ async def execute_approval(proposal_id: str) -> dict:
                 logger.info(f"Uploaded {label} mockup to product {product_id}")
             except Exception as e:
                 logger.warning(f"Failed to upload {label} mockup: {e}")
+
+    # Upload the original design artwork as the last image
+    if image_path and image_path.exists():
+        try:
+            await upload_product_image(product_id, image_path, alt="Design Artwork")
+            logger.info(f"Uploaded design artwork as last image")
+        except Exception as e:
+            logger.warning(f"Failed to upload design artwork: {e}")
 
     update_status(proposal_id, "approved")
     logger.info(f"Design approved: product {product_id} created with {len(mappings)} mappings + mockups")

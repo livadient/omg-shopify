@@ -63,17 +63,15 @@ async def create_product(
     tags: str = "",
     image_path: Path | None = None,
     published: bool = True,
+    stock_quantity: int = 100,
 ) -> dict:
     """Create a product on OMG Shopify with Male/Female + Size variants.
 
     All products get both male (S-5XL) and female (S-XL) variants.
-    Inventory tracking is disabled (print-on-demand, never sold out).
+    Inventory is set to stock_quantity at the Cyprus warehouse.
+    Design image is NOT uploaded here — it's added last after mockups.
     """
-    # Add inventory_policy: "continue" to each variant so they're always purchasable
-    variants = [
-        {**v, "inventory_policy": "continue", "inventory_management": None}
-        for v in VARIANTS
-    ]
+    variants = [{**v} for v in VARIANTS]
 
     product_data = {
         "product": {
@@ -88,14 +86,6 @@ async def create_product(
         }
     }
 
-    # Upload design image if provided
-    if image_path and image_path.exists():
-        img_bytes = image_path.read_bytes()
-        img_b64 = base64.b64encode(img_bytes).decode("utf-8")
-        product_data["product"]["images"] = [
-            {"attachment": img_b64, "filename": image_path.name}
-        ]
-
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             _admin_url("products.json"),
@@ -107,21 +97,51 @@ async def create_product(
         product = resp.json().get("product", {})
         logger.info(f"Created product: {product.get('id')} — {title} ({len(product.get('variants', []))} variants)")
 
-        # Disable inventory tracking for all variants
-        for variant in product.get("variants", []):
-            inv_item_id = variant.get("inventory_item_id")
-            if inv_item_id:
-                try:
-                    await client.put(
-                        _admin_url(f"inventory_items/{inv_item_id}.json"),
-                        headers=_headers(),
-                        json={"inventory_item": {"id": inv_item_id, "tracked": False}},
-                        timeout=15,
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to disable tracking for {inv_item_id}: {e}")
+        # Set inventory at Cyprus location
+        location_id = await _get_cyprus_location(client)
+        if location_id:
+            for variant in product.get("variants", []):
+                inv_item_id = variant.get("inventory_item_id")
+                if inv_item_id:
+                    try:
+                        await client.post(
+                            _admin_url("inventory_levels/set.json"),
+                            headers=_headers(),
+                            json={
+                                "location_id": location_id,
+                                "inventory_item_id": inv_item_id,
+                                "available": stock_quantity,
+                            },
+                            timeout=15,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to set inventory for {inv_item_id}: {e}")
+            logger.info(f"Inventory set: {stock_quantity} units per variant at location {location_id}")
+        else:
+            logger.warning("No location found — inventory not set, product may show sold out")
 
         return product
+
+
+async def _get_cyprus_location(client: httpx.AsyncClient) -> int | None:
+    """Get the Cyprus warehouse location ID."""
+    try:
+        resp = await client.get(
+            _admin_url("locations.json"),
+            headers=_headers(),
+            timeout=15,
+        )
+        resp.raise_for_status()
+        locations = resp.json().get("locations", [])
+        if locations:
+            # Return first active location (Cyprus warehouse)
+            for loc in locations:
+                if loc.get("active"):
+                    logger.info(f"Using location: {loc['name']} (ID: {loc['id']})")
+                    return loc["id"]
+    except Exception as e:
+        logger.warning(f"Failed to fetch locations: {e}")
+    return None
 
 
 async def upload_product_image(product_id: int, image_path: Path, alt: str = "") -> dict:
