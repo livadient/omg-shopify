@@ -24,13 +24,16 @@ MARKET_ROTATION = {
     4: ("EU", "Europe"),
 }
 
-SYSTEM_PROMPT = """You are an expert SEO and Google Ads consultant for a Cyprus-based online t-shirt store called OMG (omg.com.cy).
+SYSTEM_PROMPT = """You are an expert e-commerce consultant, SEO specialist, and Google Ads strategist for a Cyprus-based online t-shirt store called OMG (omg.com.cy).
 
-The store sells custom graphic tees and ships to Cyprus, Greece, and across Europe. The fulfillment partner is TShirtJunkies (tshirtjunkies.co), a Cyprus-based print-on-demand supplier.
+The store is built on Shopify and sells custom graphic tees, shipping to Cyprus, Greece, and across Europe. The fulfillment partner is TShirtJunkies (tshirtjunkies.co), a Cyprus-based print-on-demand supplier.
 
-Your job is to provide daily, actionable SEO and Google Ads recommendations to help the store rank higher and get more traffic.
+Your job is to provide daily, actionable recommendations across THREE areas:
+1. **E-shop improvements** — concrete changes to product pages, descriptions, images, collections, navigation, checkout flow, trust signals, mobile UX, or Shopify theme settings that will increase conversions and sales. These must be specific enough that a developer can implement them immediately (e.g. "Add size guide section to product pages with measurements in cm" not "improve product pages").
+2. **SEO & content** — keyword targeting, meta tags, blog content, internal linking, schema markup.
+3. **Google Ads** — keyword suggestions, campaign structure, budget allocation.
 
-You must be specific and actionable — not generic advice. Reference actual product titles, pages, and keywords.
+IMPORTANT: Every recommendation must be specific and actionable — something that can be copy-pasted to a developer to implement. Reference actual product titles, pages, handles, and keywords. No generic advice.
 
 Output your response as JSON with this structure:
 {
@@ -39,9 +42,18 @@ Output your response as JSON with this structure:
   "top_actions": [
     {
       "title": "Action title",
-      "description": "Detailed actionable description",
+      "description": "Detailed actionable description with exact changes to make",
       "impact": "High|Medium|Low",
       "effort": "5 min|15 min|30 min|1 hour"
+    }
+  ],
+  "shop_improvements": [
+    {
+      "area": "product pages|collections|navigation|checkout|trust|mobile|speed|images",
+      "title": "What to change",
+      "description": "Exact implementation details — what to add/change/remove and where",
+      "impact": "High|Medium|Low",
+      "effort": "15 min|30 min|1 hour|2 hours"
     }
   ],
   "seo_opportunities": [
@@ -217,6 +229,27 @@ def _build_email_html(report: dict, market_name: str, market_code: str, now: dat
             </td>
         </tr>"""
 
+    # Shop improvements
+    shop_html = ""
+    for imp in report.get("shop_improvements", []):
+        area_colors = {
+            "product pages": "#2563eb", "collections": "#7c3aed", "navigation": "#0891b2",
+            "checkout": "#dc2626", "trust": "#059669", "mobile": "#d97706",
+            "speed": "#4f46e5", "images": "#0d9488",
+        }
+        color = area_colors.get(imp.get("area", ""), "#6b7280")
+        shop_html += f"""
+        <tr>
+            <td style="padding:10px;border-bottom:1px solid #e5e7eb;vertical-align:top;">
+                <span style="display:inline-block;padding:2px 8px;background:{color};color:white;border-radius:4px;font-size:11px;font-weight:bold;">{imp.get('area', '?').upper()}</span>
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #e5e7eb;">
+                <strong>{imp['title']}</strong><br>
+                <span style="color:#374151;">{imp['description']}</span><br>
+                <span style="font-size:12px;color:#6b7280;">Impact: {imp.get('impact', '?')} | Effort: {imp.get('effort', '?')}</span>
+            </td>
+        </tr>"""
+
     # SEO opportunities
     seo_html = "".join(
         f"<li style='margin-bottom:6px;'>{opp}</li>"
@@ -257,6 +290,11 @@ def _build_email_html(report: dict, market_name: str, market_code: str, now: dat
         </div>
 
         <div style="padding:20px;border:1px solid #e5e7eb;border-top:none;">
+            <h3 style="color:#d97706;margin-top:0;">E-Shop Improvements</h3>
+            <table style="width:100%;border-collapse:collapse;">{shop_html}</table>
+        </div>
+
+        <div style="padding:20px;background:#f9fafb;border:1px solid #e5e7eb;border-top:none;">
             <h3 style="color:#059669;margin-top:0;">SEO Opportunities</h3>
             <ul style="margin:0;padding-left:20px;">{seo_html}</ul>
         </div>
