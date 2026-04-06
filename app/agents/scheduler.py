@@ -35,11 +35,11 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # Agent 2: Design Creator — Monday at 10:00
+    # Agent 2: Design Creator — daily Mon-Fri at 10:00
     from app.agents.design_creator import research_trends
     scheduler.add_job(
         research_trends,
-        CronTrigger(day_of_week="mon", hour=10, minute=0, timezone=tz),
+        CronTrigger(day_of_week="mon-fri", hour=10, minute=0, timezone=tz),
         id="design_creator",
         name="Trend Research & Design Creator",
         replace_existing=True,
