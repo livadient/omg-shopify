@@ -852,7 +852,7 @@ async def design_preview(proposal_id: str):
 
 
 @app.get("/agents/design/approve/{proposal_id}", response_class=HTMLResponse)
-async def design_approve(proposal_id: str, token: str = ""):
+async def design_approve(proposal_id: str, token: str = "", version: str = "original"):
     """Approve a design — creates product on Shopify + mapping."""
     from app.agents.approval import validate_token
     proposal = validate_token(proposal_id, token)
@@ -863,7 +863,7 @@ async def design_approve(proposal_id: str, token: str = ""):
         )
     from app.agents.design_creator import execute_approval
     try:
-        result = await execute_approval(proposal_id)
+        result = await execute_approval(proposal_id, version=version)
         return HTMLResponse(f"""
         <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
             <h1 style="color:#059669;">Product Created!</h1>
@@ -1176,6 +1176,25 @@ async def fix_sold_out_all(background_tasks: BackgroundTasks):
 
     background_tasks.add_task(_fix_all)
     return {"status": "started", "message": "Fixing all products in background"}
+
+
+@app.post("/fix-shipping-profile")
+async def fix_shipping_profile(product_ids: list[int] | None = None):
+    """Add products to the Cyprus shipping profile. If no IDs given, fixes ALL products."""
+    from app.shopify_product_creator import add_products_to_shipping_profile
+
+    if not product_ids:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"https://{settings.omg_shopify_domain}/admin/api/2024-01/products.json?limit=250",
+                headers={"X-Shopify-Access-Token": settings.omg_shopify_admin_token},
+                timeout=60,
+            )
+            resp.raise_for_status()
+            product_ids = [p["id"] for p in resp.json().get("products", [])]
+
+    results = await add_products_to_shipping_profile(product_ids)
+    return {"status": "done", "results": results}
 
 
 @app.on_event("startup")

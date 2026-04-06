@@ -80,6 +80,7 @@ All settings are loaded from environment variables (`.env` file supported via py
 | `POST` | `/fulfill-order/parse` | Parse TShirtJunkies fulfillment email for order number + tracking |
 | `GET` | `/shopify-auth` | Start Shopify OAuth flow to authorize the app |
 | `GET` | `/shopify-auth/callback` | OAuth callback — exchanges code for access token |
+| `POST` | `/fix-shipping-profile` | Add products to Cyprus shipping profile (JSON body: `product_ids` list, or empty for all) |
 
 ## Webhook Auto-Registration
 
@@ -407,6 +408,38 @@ This project needs to be deployed to the same Azure VM as bot-trading (`40.81.13
 - The Windows `ProactorEventLoop` workaround in `main.py` is not needed on Linux — may need a small conditional
 - `product_mappings.json` should persist across deploys (mount as volume or commit to repo)
 - Email notification links currently reference `http://40.81.137.193:8080` — update to the correct server IP or domain
+
+## Shipping Profile (Critical for New Products)
+
+New products **must** be added to the Cyprus shipping profile, otherwise they show as **"sold out"** even with inventory set. This is because Shopify requires products to belong to a shipping profile that has rates for the customer's country.
+
+- **Profile ID:** `120742379801` ([admin link](https://admin.shopify.com/store/52922c-2/settings/shipping/profiles/120742379801))
+- **Constant:** `OMG_SHIPPING_PROFILE_ID` in `shopify_product_creator.py`
+- **Automatic:** `create_product()` calls `_add_to_shipping_profile()` via the GraphQL `deliveryProfileUpdate` mutation with `variantsToAssociate`
+- **Manual fix:** `POST /fix-shipping-profile` with optional `product_ids` JSON body, or `POST /fix-sold-out/{product_id}` which also adds to the profile
+- **GraphQL field:** `variantsToAssociate` takes a flat list of variant GIDs (`gid://shopify/ProductVariant/{id}`), NOT `productVariantsToAssociate` (that field does not exist on `DeliveryProfileInput`)
+
+## T-Shirts Collection
+
+All t-shirt products are added to the "OMG T-Shirts" collection automatically on creation.
+
+- **Collection ID:** `451595010329` — https://omg.com.cy/collections/t-shirts
+- **Constant:** `OMG_TSHIRTS_COLLECTION_ID` in `shopify_product_creator.py`
+- **Automatic:** `create_product()` calls `_add_to_collection()` via `/collects.json`
+
+## T-Shirt Product Metafields
+
+All t-shirt products get standard metafields set automatically on creation. These match the metafield structure used by all other OMG products (defined in `TSHIRT_METAFIELDS` in `shopify_product_creator.py`):
+
+| Namespace.Key | Type | Content |
+|---------------|------|---------|
+| `custom.units_sold` | single_line_text_field | `100+` |
+| `custom.period_shipping` | multi_line_text_field | Delivery 1-2 days + 30-day guarantee |
+| `custom.periods_pec` | multi_line_text_field | Material, weight, fit, print method, sizes |
+| `custom.period_features` | multi_line_text_field | Premium cotton, DTG print, pre-shrunk |
+| `custom.instructions` | multi_line_text_field | Wash/care instructions |
+
+Note: The key names (`period_shipping`, `periods_pec`) match the existing store convention (legacy naming from beauty products).
 
 ## Future Considerations
 

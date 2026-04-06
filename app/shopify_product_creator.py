@@ -11,6 +11,48 @@ logger = logging.getLogger(__name__)
 
 ADMIN_API_VERSION = "2024-01"
 
+# Shipping profile for Cyprus delivery — products must be added here to be purchasable
+# From: https://admin.shopify.com/store/52922c-2/settings/shipping/profiles/120742379801
+OMG_SHIPPING_PROFILE_ID = 120742379801
+
+# T-Shirts collection — all tees must be added here
+# From: https://omg.com.cy/collections/t-shirts
+OMG_TSHIRTS_COLLECTION_ID = 451595010329
+
+# Standard metafields for all t-shirt products
+TSHIRT_METAFIELDS = [
+    {
+        "namespace": "custom",
+        "key": "units_sold",
+        "value": "100+",
+        "type": "single_line_text_field",
+    },
+    {
+        "namespace": "custom",
+        "key": "period_shipping",
+        "value": "- Orders are delivered within 1-2 business days\n- Backed by our 30-day money back guarantee",
+        "type": "multi_line_text_field",
+    },
+    {
+        "namespace": "custom",
+        "key": "periods_pec",
+        "value": "Material: 100% Premium Cotton\nWeight: 180 GSM\nFit: Classic unisex / Women's fitted\nPrint: High-quality DTG (Direct-to-Garment)\nSizes: S–5XL (Male), S–XL (Female)",
+        "type": "multi_line_text_field",
+    },
+    {
+        "namespace": "custom",
+        "key": "period_features",
+        "value": "Premium heavyweight cotton for lasting comfort\n\nVibrant DTG print that won't crack or fade\n\nPre-shrunk fabric — true to size",
+        "type": "multi_line_text_field",
+    },
+    {
+        "namespace": "custom",
+        "key": "instructions",
+        "value": "Machine wash cold inside out with similar colours.\n\nDo not bleach or tumble dry.\n\nIron on low heat, avoiding the printed area.\n\nHang dry for best results.",
+        "type": "multi_line_text_field",
+    },
+]
+
 # Variants: Gender x Size with pricing
 # Male sizes S-5XL, Female sizes S-XL
 # inventory_management=null means Shopify won't track stock (always available) — correct for print-on-demand
@@ -100,6 +142,15 @@ async def create_product(
     # Ensure all variants are purchasable by setting inventory
     await _ensure_inventory_available(product)
 
+    # Add product to the Cyprus shipping profile so it's not "sold out"
+    await _add_to_shipping_profile(product)
+
+    # Add to T-Shirts collection
+    await _add_to_collection(product, OMG_TSHIRTS_COLLECTION_ID)
+
+    # Set standard t-shirt metafields
+    await _set_tshirt_metafields(product)
+
     return product
 
 
@@ -183,6 +234,123 @@ async def _ensure_inventory_available(product: dict) -> None:
     logger.info(f"Ensured inventory available for product {product_id}")
 
 
+async def _add_to_shipping_profile(product: dict) -> None:
+    """Add a product to the OMG Cyprus shipping profile via GraphQL.
+
+    Without this, products show as 'sold out' because they have no shipping rates.
+    """
+    product_id = product.get("id")
+    if not product_id:
+        return
+
+    graphql_url = f"https://{settings.omg_shopify_domain}/admin/api/{ADMIN_API_VERSION}/graphql.json"
+    headers = _headers()
+
+    profile_gid = f"gid://shopify/DeliveryProfile/{OMG_SHIPPING_PROFILE_ID}"
+
+    # Use deliveryProfileUpdate to add the product to the shipping profile
+    mutation = """
+    mutation deliveryProfileUpdate($id: ID!, $profile: DeliveryProfileInput!) {
+      deliveryProfileUpdate(id: $id, profile: $profile) {
+        profile {
+          id
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+    """
+
+    variables = {
+        "id": profile_gid,
+        "profile": {
+            "variantsToAssociate": [
+                f"gid://shopify/ProductVariant/{v['id']}"
+                for v in product.get("variants", []) if v.get("id")
+            ],
+        },
+    }
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            graphql_url,
+            headers=headers,
+            json={"query": mutation, "variables": variables},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        # Check for top-level GraphQL errors
+        if data.get("errors"):
+            logger.warning(f"Shipping profile GraphQL errors for product {product_id}: {data['errors']}")
+            return
+        user_errors = data.get("data", {}).get("deliveryProfileUpdate", {}).get("userErrors", [])
+        if user_errors:
+            logger.warning(f"Shipping profile user errors for product {product_id}: {user_errors}")
+        else:
+            logger.info(f"Added product {product_id} to shipping profile {OMG_SHIPPING_PROFILE_ID}")
+
+
+async def _add_to_collection(product: dict, collection_id: int) -> None:
+    """Add a product to a Shopify custom collection."""
+    product_id = product.get("id")
+    if not product_id:
+        return
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            _admin_url("collects.json"),
+            headers=_headers(),
+            json={"collect": {"product_id": product_id, "collection_id": collection_id}},
+            timeout=15,
+        )
+        if resp.status_code in (200, 201):
+            logger.info(f"Added product {product_id} to collection {collection_id}")
+        elif resp.status_code == 422:
+            logger.info(f"Product {product_id} already in collection {collection_id}")
+        else:
+            logger.warning(f"Failed to add product {product_id} to collection {collection_id}: {resp.status_code} {resp.text[:200]}")
+
+
+async def _set_tshirt_metafields(product: dict) -> None:
+    """Set standard t-shirt metafields on a product."""
+    product_id = product.get("id")
+    if not product_id:
+        return
+
+    async with httpx.AsyncClient() as client:
+        for mf in TSHIRT_METAFIELDS:
+            resp = await client.post(
+                _admin_url(f"products/{product_id}/metafields.json"),
+                headers=_headers(),
+                json={"metafield": mf},
+                timeout=15,
+            )
+            if resp.status_code in (200, 201):
+                logger.info(f"Set metafield {mf['key']} on product {product_id}")
+            else:
+                logger.warning(f"Failed to set metafield {mf['key']} on product {product_id}: {resp.status_code} {resp.text[:200]}")
+
+
+async def add_products_to_shipping_profile(product_ids: list[int]) -> list[dict]:
+    """Add multiple existing products to the Cyprus shipping profile. Returns results per product."""
+    results = []
+    for pid in product_ids:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                _admin_url(f"products/{pid}.json"),
+                headers=_headers(),
+                timeout=30,
+            )
+            resp.raise_for_status()
+            product = resp.json().get("product", {})
+        await _add_to_shipping_profile(product)
+        results.append({"product_id": pid, "title": product.get("title", ""), "status": "added"})
+    return results
+
+
 async def fix_sold_out_product(product_id: int) -> dict:
     """Fix an existing sold-out product by updating all variant inventory policies."""
     async with httpx.AsyncClient() as client:
@@ -196,6 +364,7 @@ async def fix_sold_out_product(product_id: int) -> dict:
         product = resp.json().get("product", {})
 
     await _ensure_inventory_available(product)
+    await _add_to_shipping_profile(product)
     return {"product_id": product_id, "variants_fixed": len(product.get("variants", []))}
 
 

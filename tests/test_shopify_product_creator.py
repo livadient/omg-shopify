@@ -26,9 +26,9 @@ class TestVariantsConstant:
         female = [v for v in VARIANTS if v["option1"] == "Female"]
         assert len(female) == 4
 
-    def test_all_have_no_inventory_management(self):
+    def test_all_have_shopify_inventory_management(self):
         for v in VARIANTS:
-            assert v["inventory_management"] is None
+            assert v["inventory_management"] == "shopify"
 
     def test_male_sizes(self):
         male_sizes = [v["option2"] for v in VARIANTS if v["option1"] == "Male"]

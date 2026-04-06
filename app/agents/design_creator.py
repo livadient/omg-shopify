@@ -193,14 +193,19 @@ Be specific in the design description so an AI image generator can create it acc
                     style=concept.get("style", "bold graphic illustration"),
                 )
 
-            clean_path = image_path
+            from app.agents.image_client import remove_background
+            nobg_path = await remove_background(image_path)
 
-            # Create proposal
-            concept["image_path"] = str(clean_path)
-            concept["image_filename"] = clean_path.name
+            # Store both versions: original and background-removed
+            concept["image_path"] = str(image_path)
+            concept["image_filename"] = image_path.name
+            if nobg_path != image_path:
+                concept["image_nobg_path"] = str(nobg_path)
+                concept["image_nobg_filename"] = nobg_path.name
 
-            # Pre-cache TShirtJunkies mockups so approval is near-instant
-            cached_mockups = await _precache_mockups(str(clean_path), concept.get("name", ""))
+            # Pre-cache TShirtJunkies mockups using nobg version (looks better on mockup)
+            mockup_image = str(nobg_path) if nobg_path != image_path else str(image_path)
+            cached_mockups = await _precache_mockups(mockup_image, concept.get("name", ""))
             concept["cached_mockups"] = cached_mockups
 
             proposal = create_proposal("design", concept)
@@ -250,8 +255,11 @@ async def _precache_mockups(design_image_path: str, concept_name: str) -> dict:
     return cached
 
 
-async def execute_approval(proposal_id: str) -> dict:
-    """Create a Shopify product with male+female variants, fetch TJ mockups, and create mappings."""
+async def execute_approval(proposal_id: str, version: str = "original") -> dict:
+    """Create a Shopify product with male+female variants, fetch TJ mockups, and create mappings.
+
+    version: "original" uses the original image, "nobg" uses the transparent background version.
+    """
     from app.agents.approval import get_proposal, update_status
     from app.shopify_product_creator import (
         create_product, create_mappings_for_product,
@@ -263,7 +271,13 @@ async def execute_approval(proposal_id: str) -> dict:
         raise ValueError(f"Proposal {proposal_id} not found")
 
     data = proposal["data"]
-    image_path = Path(data.get("image_path", "")) if data.get("image_path") else None
+    # Pick the right image version
+    if version == "nobg" and data.get("image_nobg_path"):
+        image_path = Path(data["image_nobg_path"])
+        if not image_path.exists():
+            image_path = Path(data.get("image_path", "")) if data.get("image_path") else None
+    else:
+        image_path = Path(data.get("image_path", "")) if data.get("image_path") else None
 
     # Generate product description
     description = await llm_client.generate(
@@ -349,22 +363,60 @@ async def _send_design_email(proposals: list[dict]) -> None:
     designs_html = ""
     for p in proposals:
         data = p["data"]
-        approve = approval_url(p["id"], p["token"], "approve")
+        approve_original = approval_url(p["id"], p["token"], "approve") + "&version=original"
+        approve_nobg = approval_url(p["id"], p["token"], "approve") + "&version=nobg"
         reject = approval_url(p["id"], p["token"], "reject")
 
+        # Original image
         image_html = ""
         if data.get("image_path") and Path(data["image_path"]).exists():
             cid = f"design_{p['id']}"
             inline_images[cid] = Path(data["image_path"])
-            image_html = f'<img src="cid:{cid}" style="max-width:300px;border-radius:8px;margin-bottom:12px;" alt="{data.get("name", "design")}">'
+            image_html = f'<img src="cid:{cid}" style="max-width:280px;border-radius:8px;border:1px solid #e5e7eb;" alt="{data.get("name", "design")}">'
+
+        # Background-removed image
+        nobg_html = ""
+        has_nobg = data.get("image_nobg_path") and Path(data["image_nobg_path"]).exists()
+        if has_nobg:
+            cid_nobg = f"design_nobg_{p['id']}"
+            inline_images[cid_nobg] = Path(data["image_nobg_path"])
+            nobg_html = f'<img src="cid:{cid_nobg}" style="max-width:280px;border-radius:8px;border:1px solid #e5e7eb;background:#f3f4f6;" alt="{data.get("name", "design")} (transparent)">'
 
         error_html = ""
         if data.get("error"):
             error_html = f'<p style="color:#dc2626;font-size:13px;">Generation error: {data["error"]}</p>'
 
+        # Build approval buttons — two approve options if nobg exists
+        if has_nobg:
+            buttons_html = f"""
+            <table style="width:100%;margin-top:8px;"><tr>
+                <td style="width:50%;text-align:center;vertical-align:top;">
+                    <p style="font-size:12px;color:#6b7280;margin:0 0 6px;">With Background</p>
+                    {image_html}
+                    <br><a href="{approve_original}" style="display:inline-block;padding:10px 20px;background:#059669;color:white;text-decoration:none;border-radius:6px;font-weight:bold;margin-top:8px;">Approve Original</a>
+                </td>
+                <td style="width:50%;text-align:center;vertical-align:top;">
+                    <p style="font-size:12px;color:#6b7280;margin:0 0 6px;">Transparent (no bg)</p>
+                    {nobg_html}
+                    <br><a href="{approve_nobg}" style="display:inline-block;padding:10px 20px;background:#7c3aed;color:white;text-decoration:none;border-radius:6px;font-weight:bold;margin-top:8px;">Approve Transparent</a>
+                </td>
+            </tr></table>
+            <div style="text-align:center;margin-top:12px;">
+                <a href="{reject}" style="display:inline-block;padding:10px 24px;background:#dc2626;color:white;text-decoration:none;border-radius:6px;font-weight:bold;">Reject</a>
+            </div>
+            """
+        else:
+            buttons_html = f"""
+            <div style="text-align:center;">
+                {image_html}
+                <br>
+                <a href="{approve_original}" style="display:inline-block;padding:10px 24px;background:#059669;color:white;text-decoration:none;border-radius:6px;font-weight:bold;margin:8px 6px 0;">Approve</a>
+                <a href="{reject}" style="display:inline-block;padding:10px 24px;background:#dc2626;color:white;text-decoration:none;border-radius:6px;font-weight:bold;margin:8px 6px 0;">Reject</a>
+            </div>
+            """
+
         designs_html += f"""
         <div style="padding:20px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:16px;">
-            {image_html}
             {error_html}
             <h3 style="margin:0 0 8px;">{data.get('name', 'Untitled')}</h3>
             <table style="width:100%;margin-bottom:12px;font-size:14px;">
@@ -374,10 +426,7 @@ async def _send_design_email(proposals: list[dict]) -> None:
                 <tr><td style="color:#6b7280;padding:2px 0;">Title:</td><td>{data.get('suggested_title', '?')}</td></tr>
                 <tr><td style="color:#6b7280;padding:2px 0;">Why:</td><td style="font-size:13px;">{data.get('reasoning', '?')}</td></tr>
             </table>
-            <div style="text-align:center;">
-                <a href="{approve}" style="display:inline-block;padding:10px 24px;background:#059669;color:white;text-decoration:none;border-radius:6px;font-weight:bold;margin:0 6px;">Approve</a>
-                <a href="{reject}" style="display:inline-block;padding:10px 24px;background:#dc2626;color:white;text-decoration:none;border-radius:6px;font-weight:bold;margin:0 6px;">Reject</a>
-            </div>
+            {buttons_html}
         </div>
         """
 
