@@ -15,20 +15,20 @@ ADMIN_API_VERSION = "2024-01"
 # Male sizes S-5XL, Female sizes S-XL
 # inventory_management=null means Shopify won't track stock (always available) — correct for print-on-demand
 VARIANTS = [
-    # Male
-    {"option1": "Male", "option2": "S", "price": "30.00", "inventory_management": None, "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "M", "price": "30.00", "inventory_management": None, "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "L", "price": "30.00", "inventory_management": None, "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "XL", "price": "30.00", "inventory_management": None, "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "2XL", "price": "35.00", "inventory_management": None, "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "3XL", "price": "37.00", "inventory_management": None, "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "4XL", "price": "39.50", "inventory_management": None, "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "5XL", "price": "39.50", "inventory_management": None, "inventory_policy": "continue"},
+    # Male — inventory_management="shopify" so we can set stock levels; policy="continue" as fallback
+    {"option1": "Male", "option2": "S", "price": "30.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "M", "price": "30.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "L", "price": "30.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "XL", "price": "30.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "2XL", "price": "35.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "3XL", "price": "37.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "4XL", "price": "39.50", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "5XL", "price": "39.50", "inventory_management": "shopify", "inventory_policy": "continue"},
     # Female
-    {"option1": "Female", "option2": "S", "price": "30.00", "inventory_management": None, "inventory_policy": "continue"},
-    {"option1": "Female", "option2": "M", "price": "30.00", "inventory_management": None, "inventory_policy": "continue"},
-    {"option1": "Female", "option2": "L", "price": "30.00", "inventory_management": None, "inventory_policy": "continue"},
-    {"option1": "Female", "option2": "XL", "price": "30.00", "inventory_management": None, "inventory_policy": "continue"},
+    {"option1": "Female", "option2": "S", "price": "30.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Female", "option2": "M", "price": "30.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Female", "option2": "L", "price": "30.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Female", "option2": "XL", "price": "30.00", "inventory_management": "shopify", "inventory_policy": "continue"},
 ]
 
 # TShirtJunkies target product IDs for mapping
@@ -118,36 +118,43 @@ async def _ensure_inventory_available(product: dict) -> None:
             if not vid:
                 continue
 
-            # Update variant to ensure inventory_policy is "continue"
+            # Update variant: set inventory_management to "shopify" so we can control stock,
+            # and inventory_policy to "continue" as safety net
             try:
                 resp = await client.put(
                     _admin_url(f"variants/{vid}.json"),
                     headers=_headers(),
-                    json={"variant": {"id": vid, "inventory_policy": "continue"}},
+                    json={"variant": {"id": vid, "inventory_management": "shopify", "inventory_policy": "continue"}},
                     timeout=30,
                 )
                 resp.raise_for_status()
             except Exception as e:
-                logger.warning(f"Failed to update variant {vid} inventory_policy: {e}")
+                logger.warning(f"Failed to update variant {vid}: {e}")
 
-            # Set inventory level to 999 via inventory API
+            # Set inventory level to 999
             inventory_item_id = v.get("inventory_item_id")
             if not inventory_item_id:
+                # Re-fetch variant to get inventory_item_id (may not be in the original response)
+                try:
+                    vr = await client.get(_admin_url(f"variants/{vid}.json"), headers=_headers(), timeout=30)
+                    vr.raise_for_status()
+                    inventory_item_id = vr.json().get("variant", {}).get("inventory_item_id")
+                except Exception:
+                    pass
+            if not inventory_item_id:
                 continue
-            try:
-                # Get the location ID first
-                loc_resp = await client.get(
-                    _admin_url("locations.json"),
-                    headers=_headers(),
-                    timeout=30,
-                )
-                loc_resp.raise_for_status()
-                locations = loc_resp.json().get("locations", [])
-                if not locations:
-                    continue
-                location_id = locations[0]["id"]
 
-                # Set inventory level
+            try:
+                # Get the location ID
+                if not hasattr(_ensure_inventory_available, "_location_id"):
+                    loc_resp = await client.get(_admin_url("locations.json"), headers=_headers(), timeout=30)
+                    loc_resp.raise_for_status()
+                    locations = loc_resp.json().get("locations", [])
+                    _ensure_inventory_available._location_id = locations[0]["id"] if locations else None
+                location_id = _ensure_inventory_available._location_id
+                if not location_id:
+                    continue
+
                 resp = await client.post(
                     _admin_url("inventory_levels/set.json"),
                     headers=_headers(),
@@ -158,11 +165,12 @@ async def _ensure_inventory_available(product: dict) -> None:
                     },
                     timeout=30,
                 )
-                # This may fail if inventory_management is null — that's OK
                 if resp.status_code < 400:
-                    logger.debug(f"Set inventory for variant {vid} to 999")
-            except Exception:
-                pass  # Not critical — inventory_policy=continue is the main fix
+                    logger.info(f"Set inventory for variant {vid} to 999")
+                else:
+                    logger.warning(f"Failed to set inventory for {vid}: {resp.status_code} {resp.text[:200]}")
+            except Exception as e:
+                logger.warning(f"Failed to set inventory for variant {vid}: {e}")
 
     logger.info(f"Ensured inventory available for product {product_id}")
 
