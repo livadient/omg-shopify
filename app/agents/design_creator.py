@@ -27,18 +27,19 @@ Think about:
 
 For each concept, provide enough detail for an AI image generator to create the design.
 
-You MUST generate exactly 3 concepts, one of each type:
+You MUST generate exactly 4 concepts, one of each type:
 
 1. **Graphic Design** — A visually striking illustration or artwork (nature, culture, abstract, lifestyle). No text on the design.
 2. **Slogan/Quote** — A bold typographic design featuring a funny, clever, or inspirational quote or slogan. The text IS the design. Think punchy one-liners, witty observations, or motivational statements. Can include Greek/Cypriot slang.
 3. **Funny Design** — A humorous illustration that makes people laugh or smile. Visual comedy, absurd situations, clever visual puns, meme-inspired (but original) artwork.
+4. **Geeky/Nerd Design** — Something for tech lovers, gamers, science nerds, programmers, anime fans, or sci-fi enthusiasts. Clever references, pixel art, code jokes, retro gaming, science humor, or fantasy/D&D themes. Must be original (no copyrighted characters).
 
 Output as JSON:
 {
   "concepts": [
     {
       "name": "Short concept name",
-      "type": "graphic|slogan|funny",
+      "type": "graphic|slogan|funny|geeky",
       "description": "Detailed description of the design for image generation",
       "style": "art style (e.g., minimalist vector, vintage retro, bold graphic, watercolor, line art)",
       "text_on_shirt": "Any text/slogan to include (or empty string if none)",
@@ -51,7 +52,7 @@ Output as JSON:
   ]
 }
 
-Generate exactly 3 concepts — one graphic, one slogan, one funny. All must be original."""
+Generate exactly 4 concepts — one graphic, one slogan, one funny, one geeky. All must be original."""
 
 
 async def research_trends() -> list[dict]:
