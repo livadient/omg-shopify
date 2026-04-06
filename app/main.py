@@ -1063,14 +1063,19 @@ async def seo_run_all(background_tasks: BackgroundTasks):
 @app.get("/debug-inventory/{product_id}")
 async def debug_inventory(product_id: int):
     """Debug: show inventory state for all variants of a product."""
-    from app.shopify_product_creator import _admin_url, _headers
+    domain = settings.omg_shopify_domain
+    if not domain.endswith(".myshopify.com"):
+        domain = "52922c-2.myshopify.com"
+    base = f"https://{domain}/admin/api/2024-01"
+    hdrs = {"X-Shopify-Access-Token": settings.omg_shopify_admin_token, "Content-Type": "application/json"}
+
     results = []
     async with httpx.AsyncClient() as client:
-        resp = await client.get(_admin_url(f"products/{product_id}.json"), headers=_headers(), timeout=30)
+        resp = await client.get(f"{base}/products/{product_id}.json", headers=hdrs, timeout=30)
         resp.raise_for_status()
         product = resp.json().get("product", {})
 
-        loc_resp = await client.get(_admin_url("locations.json"), headers=_headers(), timeout=30)
+        loc_resp = await client.get(f"{base}/locations.json", headers=hdrs, timeout=30)
         locations = loc_resp.json().get("locations", [])
         location_id = locations[0]["id"] if locations else None
 
@@ -1086,8 +1091,8 @@ async def debug_inventory(product_id: int):
             if location_id and v.get("inventory_item_id"):
                 try:
                     inv_resp = await client.get(
-                        _admin_url(f"inventory_levels.json?inventory_item_ids={v['inventory_item_id']}&location_ids={location_id}"),
-                        headers=_headers(), timeout=30,
+                        f"{base}/inventory_levels.json?inventory_item_ids={v['inventory_item_id']}&location_ids={location_id}",
+                        headers=hdrs, timeout=30,
                     )
                     levels = inv_resp.json().get("inventory_levels", [])
                     info["inventory_levels"] = levels
