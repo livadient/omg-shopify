@@ -8,4 +8,8 @@ services:
       - ./product_mappings.json:/project/product_mappings.json
       - ./static:/project/static
       - ./data:/project/data
+      - u2net-cache:/home/appuser/.u2net
     restart: unless-stopped
+
+volumes:
+  u2net-cache:
