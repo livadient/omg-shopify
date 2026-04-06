@@ -180,12 +180,18 @@ Be specific in the design description so an AI image generator can create it acc
     proposals = []
     for concept in concepts:
         try:
-            # Generate the design image (no background removal — white bg is fine for printing)
-            from app.agents.image_client import generate_design
-            image_path = await generate_design(
-                concept=concept["description"],
-                style=concept.get("style", "bold graphic illustration"),
-            )
+            # Slogan/quote designs use Pillow text rendering; others use DALL-E
+            from app.agents.image_client import generate_design, generate_text_design
+            if concept.get("type") == "slogan" and concept.get("text_on_shirt"):
+                image_path = await generate_text_design(
+                    text=concept["text_on_shirt"],
+                    style=concept.get("style", "bold modern"),
+                )
+            else:
+                image_path = await generate_design(
+                    concept=concept["description"],
+                    style=concept.get("style", "bold graphic illustration"),
+                )
 
             clean_path = image_path
 
