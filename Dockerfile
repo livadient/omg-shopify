@@ -27,7 +27,9 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && playwright install-deps chromium
 
 # Create non-root user and install Playwright browsers as that user
-RUN useradd --create-home appuser
+RUN useradd --create-home appuser \
+    && mkdir -p /home/appuser/.u2net \
+    && chown appuser:appuser /home/appuser/.u2net
 USER appuser
 RUN playwright install chromium
 
