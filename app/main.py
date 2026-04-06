@@ -1060,6 +1060,43 @@ async def seo_run_all(background_tasks: BackgroundTasks):
     return {"status": "started", "task": "all", "message": "Running all SEO tasks in background"}
 
 
+@app.get("/debug-inventory/{product_id}")
+async def debug_inventory(product_id: int):
+    """Debug: show inventory state for all variants of a product."""
+    from app.shopify_product_creator import _admin_url, _headers
+    results = []
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(_admin_url(f"products/{product_id}.json"), headers=_headers(), timeout=30)
+        resp.raise_for_status()
+        product = resp.json().get("product", {})
+
+        loc_resp = await client.get(_admin_url("locations.json"), headers=_headers(), timeout=30)
+        locations = loc_resp.json().get("locations", [])
+        location_id = locations[0]["id"] if locations else None
+
+        for v in product.get("variants", []):
+            info = {
+                "id": v["id"],
+                "title": v["title"],
+                "inventory_management": v.get("inventory_management"),
+                "inventory_policy": v.get("inventory_policy"),
+                "inventory_quantity": v.get("inventory_quantity"),
+                "inventory_item_id": v.get("inventory_item_id"),
+            }
+            if location_id and v.get("inventory_item_id"):
+                try:
+                    inv_resp = await client.get(
+                        _admin_url(f"inventory_levels.json?inventory_item_ids={v['inventory_item_id']}&location_ids={location_id}"),
+                        headers=_headers(), timeout=30,
+                    )
+                    levels = inv_resp.json().get("inventory_levels", [])
+                    info["inventory_levels"] = levels
+                except Exception:
+                    pass
+            results.append(info)
+    return {"product_id": product_id, "title": product.get("title"), "variants": results}
+
+
 @app.post("/fix-sold-out/{product_id}")
 async def fix_sold_out(product_id: int):
     """Fix a sold-out product by setting inventory_policy=continue on all variants."""
