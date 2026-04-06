@@ -761,12 +761,14 @@ async def blog_approve(proposal_id: str, token: str = ""):
     from app.agents.blog_writer import execute_approval
     try:
         article = await execute_approval(proposal_id)
+        article_handle = article.get('handle', '')
+        article_url = f"https://omg.com.cy/blogs/news/{article_handle}" if article_handle else "https://omg.com.cy/blogs"
         return HTMLResponse(f"""
         <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
             <h1 style="color:#059669;">Blog Post Published!</h1>
             <p><strong>{proposal['data'].get('title', '')}</strong></p>
             <p>Article ID: {article.get('id', '?')}</p>
-            <a href="https://omg.com.cy/blogs" style="color:#2563eb;">View on store</a>
+            <a href="{article_url}" style="color:#2563eb;">View on store</a>
         </body></html>
         """)
     except Exception as e:

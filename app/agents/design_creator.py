@@ -68,18 +68,42 @@ async def research_trends() -> list[dict]:
 
 async def _research_trends_impl() -> list[dict]:
     """Internal implementation."""
-    logger.info("Design Creator: researching trends and generating concepts")
+    logger.info("Design Creator: researching current t-shirt trends")
 
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
+    season = _get_season(now.month)
+    date_str = now.strftime('%A, %B %d, %Y')
 
-    user_prompt = f"""Today's date: {now.strftime('%A, %B %d, %Y')}
+    # Step 1: Research actual t-shirt trends via web search
+    trend_research = await llm_client.generate_with_search(
+        system_prompt="You are a fashion trend researcher specializing in graphic t-shirts and streetwear. Provide concise, actionable trend insights.",
+        user_prompt=f"""Today is {date_str}. Research the CURRENT trending t-shirt designs for {season} 2026.
+
+Search for:
+1. What graphic tee designs are trending right now (Etsy, Redbubble, Pinterest, Instagram)
+2. Popular t-shirt design styles and aesthetics in 2026
+3. Trending memes, phrases, or cultural moments that would work on t-shirts
+4. What's selling well in the European/Mediterranean t-shirt market
+
+Summarize the top 10-15 specific trends you find, with concrete examples. Focus on what's actually selling NOW, not generic advice.""",
+        max_tokens=2000,
+        temperature=0.5,
+    )
+
+    logger.info(f"Trend research complete: {len(trend_research)} chars")
+
+    # Step 2: Generate design concepts informed by real trends
+    user_prompt = f"""Today's date: {date_str}
 Store: OMG (omg.com.cy), Cyprus-based t-shirt brand
 Markets: Cyprus, Greece, Europe
-Current season: {_get_season(now.month)}
+Current season: {season}
 
-Research current t-shirt design trends and generate 3 original, commercially viable design concepts.
-Each concept should be different in style and appeal to different segments of our audience.
+CURRENT T-SHIRT TRENDS (from real-time research):
+{trend_research}
+
+Based on these REAL current trends, generate 4 original, commercially viable design concepts.
+Each concept should be inspired by what's actually trending right now, adapted for our Mediterranean/Cypriot audience.
 Be specific in the design description so an AI image generator can create it accurately."""
 
     # Get design concepts from Claude

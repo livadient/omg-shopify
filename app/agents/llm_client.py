@@ -40,6 +40,68 @@ async def generate(
     return text
 
 
+async def generate_with_search(
+    system_prompt: str,
+    user_prompt: str,
+    model: str = "claude-sonnet-4-20250514",
+    max_tokens: int = 4096,
+    temperature: float = 0.7,
+) -> str:
+    """Call Claude API with web search tool enabled and return the text response."""
+    client = _get_client()
+    logger.info(f"Calling Claude with web search ({model}), prompt length: {len(user_prompt)} chars")
+
+    response = await client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_prompt}],
+        tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
+    )
+
+    # Collect all text blocks from the response (may include tool use/results)
+    text_parts = []
+    for block in response.content:
+        if block.type == "text":
+            text_parts.append(block.text)
+
+    # If the model used search and needs to continue, handle tool use loop
+    while response.stop_reason == "tool_use":
+        # Build messages with assistant response + tool results
+        messages = [
+            {"role": "user", "content": user_prompt},
+            {"role": "assistant", "content": response.content},
+        ]
+        # Add tool results for any server-side tool use
+        tool_results = []
+        for block in response.content:
+            if block.type == "server_tool_use":
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": "Search completed.",
+                })
+        if tool_results:
+            messages.append({"role": "user", "content": tool_results})
+
+        response = await client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system=system_prompt,
+            messages=messages,
+            tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
+        )
+        for block in response.content:
+            if block.type == "text":
+                text_parts.append(block.text)
+
+    full_text = "\n".join(text_parts)
+    logger.info(f"Claude search response: {len(full_text)} chars")
+    return full_text
+
+
 async def generate_json(
     system_prompt: str,
     user_prompt: str,
