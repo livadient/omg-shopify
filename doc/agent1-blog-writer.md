@@ -6,7 +6,7 @@ Generates SEO-optimized blog posts about OMG t-shirts and publishes them to the 
 
 ## Schedule
 
-**Twice per week:** Tuesday and Friday at 10:00 Cyprus time (Europe/Nicosia)
+**Twice per week:** Tuesday and Friday at 05:00 Cyprus time (Europe/Nicosia)
 
 ## Flow
 

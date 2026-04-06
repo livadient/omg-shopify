@@ -241,12 +241,67 @@ app/
   email_service.py       — Async email notifications via aiosmtplib (includes shipping details block)
   email_parser.py        — Parse OMG order confirmation emails
   omg_fulfillment.py     — OMG Shopify Admin API: order lookup, fulfillment creation, OAuth token exchange
+  seo_management.py      — SEO optimization: fix handles, homepage meta, create collections
+  shopify_blog.py        — Shopify Blog Article Admin API
+  shopify_product_creator.py — Create products with Gender+Size variants, upload images, fetch mockups
+  agents/
+    llm_client.py        — Anthropic Claude API wrapper (generate, generate_with_search, generate_json)
+    image_client.py      — OpenAI DALL-E 3 image generation + rembg background removal
+    scheduler.py         — APScheduler cron setup for all agent jobs
+    approval.py          — Token-based proposal storage and approval workflow
+    agent_email.py       — Shared email utilities for agents (inline images, error notifications)
+    blog_writer.py       — Agent 1: SEO blog post generation
+    design_creator.py    — Agent 2: Trend research, design generation, mockup pre-caching
+    ranking_advisor.py   — Agent 3: Daily SEO and Google Ads recommendations
 product_mappings.json    — Saved variant ID mappings
+data/
+  proposals.json         — Agent proposal storage (persisted via Docker volume)
+  ranking_history.json   — Ranking advisor report history
 static/
   front_design.png       — Design image uploaded to Qstomizer
+  proposals/             — Generated design images + cached mockups
   checkout_result.png    — Latest Playwright screenshot (auto-generated)
+tests/                   — Unit tests (pytest) — 130 tests, all mocked, no external services
 .env.example             — Template for environment variables
 ```
+
+## Agent Schedules
+
+All times are Cyprus time (Europe/Nicosia):
+
+| Agent | Schedule | Time | Purpose |
+|-------|----------|------|---------|
+| Design Creator | Mon-Fri | 04:00 | Research trends, generate 5 designs, pre-cache mockups |
+| SEO Optimizer | Mon-Fri | 04:30 | Fix handles, homepage SEO, create collections |
+| Blog Writer | Tue, Fri | 05:00 | Generate SEO blog post for review |
+| Ranking Advisor | Mon-Fri | 07:00 | Daily SEO/Google Ads recommendations |
+
+## Documentation Index
+
+Detailed documentation for every subsystem is in `doc/`:
+
+| Document | Topic |
+|----------|-------|
+| [architecture.md](doc/architecture.md) | System architecture, agent pattern, file structure |
+| [setup-guide.md](doc/setup-guide.md) | Installation, configuration, Docker, troubleshooting |
+| [configuration.md](doc/configuration.md) | All environment variables and Settings class |
+| [api-endpoints.md](doc/api-endpoints.md) | REST API reference for all endpoints |
+| [webhook-order-flow.md](doc/webhook-order-flow.md) | Shopify webhook → Playwright → email flow |
+| [qstomizer-automation.md](doc/qstomizer-automation.md) | Playwright browser automation (13-step process) |
+| [product-mappings.md](doc/product-mappings.md) | OMG ↔ TShirtJunkies product mapping system |
+| [shopify-integration.md](doc/shopify-integration.md) | All Shopify API integrations (Admin + Storefront) |
+| [email-system.md](doc/email-system.md) | Order notifications, agent emails, email parsing |
+| [approval-workflow.md](doc/approval-workflow.md) | Token-based proposal approval system |
+| [llm-image-clients.md](doc/llm-image-clients.md) | Claude API and DALL-E 3 client wrappers |
+| [agent1-blog-writer.md](doc/agent1-blog-writer.md) | SEO Blog Writer agent specification |
+| [agent2-design-creator.md](doc/agent2-design-creator.md) | Design Creator agent (5 types, mockup pre-caching) |
+| [agent3-ranking-advisor.md](doc/agent3-ranking-advisor.md) | Ranking Advisor agent (market rotation) |
+
+## Testing
+
+Run unit tests: `pytest tests/ -v`
+
+130 tests covering all modules. All external services (HTTP, SMTP, Claude, DALL-E, Playwright) are mocked. File-based tests use `tmp_path` for isolation.
 
 ## OMG Shopify Admin API (OAuth)
 

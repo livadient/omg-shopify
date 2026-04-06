@@ -5,11 +5,12 @@
 - Existing OMG Shopify Python service running (see main README)
 - Anthropic API key (for Claude)
 - OpenAI API key (for DALL-E 3 image generation)
+- `rembg` with `onnxruntime` for background removal (u2net model downloads ~170MB on first run)
 
 ## 1. Install New Dependencies
 
 ```bash
-.venv/Scripts/pip install anthropic openai apscheduler rembg
+.venv/Scripts/pip install anthropic openai apscheduler rembg onnxruntime
 ```
 
 Or update from requirements.txt:
@@ -70,6 +71,7 @@ volumes:
   - ./product_mappings.json:/project/product_mappings.json
   - ./static:/project/static      # whole directory (for new designs)
   - ./data:/project/data           # proposal storage
+  - u2net_cache:/root/.u2net       # rembg model cache (persists across rebuilds)
 ```
 
 ## 7. Verify Setup
@@ -95,17 +97,18 @@ Once running, agents execute automatically:
 
 | Agent | Schedule | Time (Cyprus) |
 |-------|----------|---------------|
+| Design Creator | Mon-Fri | 04:00 |
+| SEO Optimizer | Mon-Fri | 04:30 |
+| Blog Writer | Tue, Fri | 05:00 |
 | Ranking Advisor | Mon-Fri | 07:00 |
-| Blog Writer | Tue, Fri | 10:00 |
-| Design Creator | Monday | 10:00 |
 
 ## Costs
 
 | Service | Estimated Monthly Cost |
 |---------|----------------------|
-| Claude API (Anthropic) | $10-30 |
-| DALL-E 3 (OpenAI) | $5-15 |
-| **Total** | **$15-45** |
+| Claude API (Anthropic) | $15-40 (includes web search for trend research) |
+| DALL-E 3 (OpenAI) | $20-40 (5 designs/day, Mon-Fri) |
+| **Total** | **$35-80** |
 
 ## Troubleshooting
 

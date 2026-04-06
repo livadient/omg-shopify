@@ -62,7 +62,7 @@ curl -X POST http://localhost:8080/agents/design/research
       "image_url": "/static/proposals/def456.png"
     }
   ],
-  "message": "3 designs generated. Email sent for review."
+  "message": "5 designs generated. Email sent for review."
 }
 ```
 
@@ -116,6 +116,29 @@ curl -X POST http://localhost:8080/agents/ranking/generate
 
 ---
 
+## SEO Management
+
+| Method | Path | Purpose | Auth |
+|--------|------|---------|------|
+| POST | `/seo/fix-handles` | Fix duplicate product handles | None |
+| POST | `/seo/homepage` | Update homepage SEO meta tags | None |
+| POST | `/seo/collections` | Create Cyprus-specific collections | None |
+| POST | `/seo/all` | Run all SEO tasks | None |
+
+### Fix Handles
+```bash
+curl -X POST http://localhost:8080/seo/fix-handles
+```
+Scans products for duplicate handles and fixes them to ensure unique, SEO-friendly URLs.
+
+### Run All SEO Tasks
+```bash
+curl -X POST http://localhost:8080/seo/all
+```
+Runs all SEO optimization tasks in sequence: fix handles, update homepage meta tags, create collections.
+
+---
+
 ## Common Response Models
 
 ### Proposal
@@ -144,5 +167,5 @@ Agent endpoints are unauthenticated (same as existing endpoints). Approval actio
 
 Manual trigger endpoints have no built-in rate limiting, but each call incurs AI API costs:
 - Blog generation: ~$0.02-0.05 per call (Claude)
-- Design research: ~$0.15-0.30 per call (Claude + 3x DALL-E 3)
+- Design research: ~$0.25-0.50 per call (Claude with web search + 5x DALL-E 3)
 - Ranking report: ~$0.01-0.03 per call (Claude)

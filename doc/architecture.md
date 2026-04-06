@@ -18,6 +18,11 @@ Three AI agents integrate into the existing FastAPI service to automate content 
 │  │  Writer       │  │  Creator      │  │  Advisor      │      │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
 │         │                  │                  │              │
+│  ┌──────────────────────────────────────────────────┐      │
+│  │              SEO Management                       │      │
+│  │  Handle fixer │ Homepage SEO │ Collections        │      │
+│  └──────────────────────────────────────────────────┘      │
+│         │                  │                  │              │
 │  ┌──────▼──────────────────▼──────────────────▼───────┐     │
 │  │              Shared Infrastructure                  │     │
 │  │  ┌────────────┐ ┌────────────┐ ┌────────────┐     │     │
@@ -80,6 +85,7 @@ app/
     blog_writer.py           # Agent 1: SEO Blog Writer
     design_creator.py        # Agent 2: Trend Research & Design
     ranking_advisor.py       # Agent 3: Google Ranking Advisor
+    agent_email.py           # Agent-specific email formatting
   shopify_blog.py            # Shopify Blog Article Admin API
   shopify_product_creator.py # Shopify Product creation Admin API
 data/
@@ -107,5 +113,16 @@ doc/
 | Agent | Input | AI Processing | Output | Action on Approval |
 |-------|-------|---------------|--------|-------------------|
 | Blog Writer | Product catalog, existing articles | Claude generates SEO blog post | HTML article + meta | Publish to Shopify blog |
-| Design Creator | Trend research context | Claude ideates + DALL-E 3 renders | Design PNG + product spec | Create Shopify product + mapping |
+| Design Creator | Web search trends, market data | Claude ideates + DALL-E 3 renders | Design PNG + cached mockups | Create Shopify product + mapping |
 | Ranking Advisor | Products, articles, market focus | Claude analyzes + recommends | Email report | N/A (advisory) |
+| SEO Management | Product catalog, store metadata | Automated optimization | Fixed handles, meta tags, collections | Immediate (no approval) |
+
+## SEO Management
+
+SEO optimization tasks run as scheduled jobs and can also be triggered manually via API endpoints:
+
+- **Handle fixer:** Scans for duplicate product handles and fixes them
+- **Homepage SEO:** Updates homepage meta title and description tags
+- **Collections:** Creates Cyprus-specific collections for local SEO
+
+These tasks use the Shopify Admin API directly (no LLM needed).
