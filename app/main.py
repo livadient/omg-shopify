@@ -1197,6 +1197,35 @@ async def fix_shipping_profile(product_ids: list[int] | None = None):
     return {"status": "done", "results": results}
 
 
+@app.post("/sync-product/{product_id}")
+async def sync_product(product_id: int):
+    """Download design image from Shopify and create mappings for a product."""
+    from app.shopify_product_creator import create_mappings_for_product, _admin_url, _headers
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            _admin_url(f"products/{product_id}.json"),
+            headers=_headers(),
+            timeout=30,
+        )
+        resp.raise_for_status()
+        product = resp.json()["product"]
+        handle = product["handle"]
+
+        # Download the design artwork image
+        images = product.get("images", [])
+        design_img = next((i for i in reversed(images) if i.get("alt") == "Design Artwork"), None)
+        if not design_img:
+            return {"error": "No Design Artwork image found on product"}
+
+        img_resp = await client.get(design_img["src"], timeout=30, follow_redirects=True)
+        dest = STATIC_DIR / f"design_{handle}.png"
+        dest.write_bytes(img_resp.content)
+
+    mappings = await create_mappings_for_product(product, design_image=f"design_{handle}.png")
+    return {"handle": handle, "design_image": f"design_{handle}.png", "mappings_created": len(mappings)}
+
+
 @app.on_event("startup")
 async def print_endpoints():
     base = f"http://localhost:{settings.port}"
