@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.config import settings
 from app.email_parser import parse_order_email
@@ -1063,43 +1063,45 @@ async def seo_run_all(background_tasks: BackgroundTasks):
 @app.get("/debug-inventory/{product_id}")
 async def debug_inventory(product_id: int):
     """Debug: show inventory state for all variants of a product."""
-    domain = settings.omg_shopify_domain
-    if not domain.endswith(".myshopify.com"):
-        domain = "52922c-2.myshopify.com"
-    base = f"https://{domain}/admin/api/2024-01"
-    hdrs = {"X-Shopify-Access-Token": settings.omg_shopify_admin_token, "Content-Type": "application/json"}
+    try:
+        domain = settings.omg_shopify_domain
+        base = f"https://{domain}/admin/api/2024-01"
+        hdrs = {"X-Shopify-Access-Token": settings.omg_shopify_admin_token, "Content-Type": "application/json"}
 
-    results = []
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{base}/products/{product_id}.json", headers=hdrs, timeout=30)
-        resp.raise_for_status()
-        product = resp.json().get("product", {})
+        results = []
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(f"{base}/products/{product_id}.json", headers=hdrs, timeout=30)
+            resp.raise_for_status()
+            product = resp.json().get("product", {})
 
-        loc_resp = await client.get(f"{base}/locations.json", headers=hdrs, timeout=30)
-        locations = loc_resp.json().get("locations", [])
-        location_id = locations[0]["id"] if locations else None
+            loc_resp = await client.get(f"{base}/locations.json", headers=hdrs, timeout=30)
+            locations = loc_resp.json().get("locations", [])
+            location_id = locations[0]["id"] if locations else None
 
-        for v in product.get("variants", []):
-            info = {
-                "id": v["id"],
-                "title": v["title"],
-                "inventory_management": v.get("inventory_management"),
-                "inventory_policy": v.get("inventory_policy"),
-                "inventory_quantity": v.get("inventory_quantity"),
-                "inventory_item_id": v.get("inventory_item_id"),
-            }
-            if location_id and v.get("inventory_item_id"):
-                try:
-                    inv_resp = await client.get(
-                        f"{base}/inventory_levels.json?inventory_item_ids={v['inventory_item_id']}&location_ids={location_id}",
-                        headers=hdrs, timeout=30,
-                    )
-                    levels = inv_resp.json().get("inventory_levels", [])
-                    info["inventory_levels"] = levels
-                except Exception:
-                    pass
-            results.append(info)
-    return {"product_id": product_id, "title": product.get("title"), "variants": results}
+            for v in product.get("variants", []):
+                info = {
+                    "id": v["id"],
+                    "title": v["title"],
+                    "inventory_management": v.get("inventory_management"),
+                    "inventory_policy": v.get("inventory_policy"),
+                    "inventory_quantity": v.get("inventory_quantity"),
+                    "inventory_item_id": v.get("inventory_item_id"),
+                }
+                if location_id and v.get("inventory_item_id"):
+                    try:
+                        inv_resp = await client.get(
+                            f"{base}/inventory_levels.json?inventory_item_ids={v['inventory_item_id']}&location_ids={location_id}",
+                            headers=hdrs, timeout=30,
+                        )
+                        levels = inv_resp.json().get("inventory_levels", [])
+                        info["inventory_levels"] = levels
+                    except Exception:
+                        pass
+                results.append(info)
+        return {"product_id": product_id, "title": product.get("title"), "variants": results}
+    except Exception as e:
+        import traceback
+        return JSONResponse(status_code=500, content={"error": str(e), "traceback": traceback.format_exc()})
 
 
 @app.post("/fix-sold-out/{product_id}")
