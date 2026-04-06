@@ -1060,6 +1060,38 @@ async def seo_run_all(background_tasks: BackgroundTasks):
     return {"status": "started", "task": "all", "message": "Running all SEO tasks in background"}
 
 
+@app.post("/fix-sold-out/{product_id}")
+async def fix_sold_out(product_id: int):
+    """Fix a sold-out product by setting inventory_policy=continue on all variants."""
+    from app.shopify_product_creator import fix_sold_out_product
+    result = await fix_sold_out_product(product_id)
+    return {"status": "fixed", **result}
+
+
+@app.post("/fix-sold-out-all")
+async def fix_sold_out_all(background_tasks: BackgroundTasks):
+    """Fix ALL products that may show as sold out."""
+    from app.shopify_product_creator import fix_sold_out_product
+
+    async def _fix_all():
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"https://{settings.omg_shopify_domain}/admin/api/2024-01/products.json?limit=250",
+                headers={"X-Shopify-Access-Token": settings.omg_shopify_admin_token},
+                timeout=60,
+            )
+            resp.raise_for_status()
+            products = resp.json().get("products", [])
+            for p in products:
+                try:
+                    await fix_sold_out_product(p["id"])
+                except Exception as e:
+                    logger.error(f"Failed to fix product {p['id']}: {e}")
+
+    background_tasks.add_task(_fix_all)
+    return {"status": "started", "message": "Fixing all products in background"}
+
+
 @app.on_event("startup")
 async def print_endpoints():
     base = f"http://localhost:{settings.port}"

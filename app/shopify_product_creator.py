@@ -16,19 +16,19 @@ ADMIN_API_VERSION = "2024-01"
 # inventory_management=null means Shopify won't track stock (always available) — correct for print-on-demand
 VARIANTS = [
     # Male
-    {"option1": "Male", "option2": "S", "price": "30.00", "inventory_management": None},
-    {"option1": "Male", "option2": "M", "price": "30.00", "inventory_management": None},
-    {"option1": "Male", "option2": "L", "price": "30.00", "inventory_management": None},
-    {"option1": "Male", "option2": "XL", "price": "30.00", "inventory_management": None},
-    {"option1": "Male", "option2": "2XL", "price": "35.00", "inventory_management": None},
-    {"option1": "Male", "option2": "3XL", "price": "37.00", "inventory_management": None},
-    {"option1": "Male", "option2": "4XL", "price": "39.50", "inventory_management": None},
-    {"option1": "Male", "option2": "5XL", "price": "39.50", "inventory_management": None},
+    {"option1": "Male", "option2": "S", "price": "30.00", "inventory_management": None, "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "M", "price": "30.00", "inventory_management": None, "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "L", "price": "30.00", "inventory_management": None, "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "XL", "price": "30.00", "inventory_management": None, "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "2XL", "price": "35.00", "inventory_management": None, "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "3XL", "price": "37.00", "inventory_management": None, "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "4XL", "price": "39.50", "inventory_management": None, "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "5XL", "price": "39.50", "inventory_management": None, "inventory_policy": "continue"},
     # Female
-    {"option1": "Female", "option2": "S", "price": "30.00", "inventory_management": None},
-    {"option1": "Female", "option2": "M", "price": "30.00", "inventory_management": None},
-    {"option1": "Female", "option2": "L", "price": "30.00", "inventory_management": None},
-    {"option1": "Female", "option2": "XL", "price": "30.00", "inventory_management": None},
+    {"option1": "Female", "option2": "S", "price": "30.00", "inventory_management": None, "inventory_policy": "continue"},
+    {"option1": "Female", "option2": "M", "price": "30.00", "inventory_management": None, "inventory_policy": "continue"},
+    {"option1": "Female", "option2": "L", "price": "30.00", "inventory_management": None, "inventory_policy": "continue"},
+    {"option1": "Female", "option2": "XL", "price": "30.00", "inventory_management": None, "inventory_policy": "continue"},
 ]
 
 # TShirtJunkies target product IDs for mapping
@@ -96,7 +96,91 @@ async def create_product(
         resp.raise_for_status()
         product = resp.json().get("product", {})
         logger.info(f"Created product: {product.get('id')} — {title} ({len(product.get('variants', []))} variants)")
-        return product
+
+    # Ensure all variants are purchasable by setting inventory
+    await _ensure_inventory_available(product)
+
+    return product
+
+
+async def _ensure_inventory_available(product: dict) -> None:
+    """Set inventory_policy=continue on all variants and set stock to 999.
+
+    This prevents the 'sold out' issue on print-on-demand products.
+    """
+    product_id = product.get("id")
+    if not product_id:
+        return
+
+    async with httpx.AsyncClient() as client:
+        for v in product.get("variants", []):
+            vid = v.get("id")
+            if not vid:
+                continue
+
+            # Update variant to ensure inventory_policy is "continue"
+            try:
+                resp = await client.put(
+                    _admin_url(f"variants/{vid}.json"),
+                    headers=_headers(),
+                    json={"variant": {"id": vid, "inventory_policy": "continue"}},
+                    timeout=30,
+                )
+                resp.raise_for_status()
+            except Exception as e:
+                logger.warning(f"Failed to update variant {vid} inventory_policy: {e}")
+
+            # Set inventory level to 999 via inventory API
+            inventory_item_id = v.get("inventory_item_id")
+            if not inventory_item_id:
+                continue
+            try:
+                # Get the location ID first
+                loc_resp = await client.get(
+                    _admin_url("locations.json"),
+                    headers=_headers(),
+                    timeout=30,
+                )
+                loc_resp.raise_for_status()
+                locations = loc_resp.json().get("locations", [])
+                if not locations:
+                    continue
+                location_id = locations[0]["id"]
+
+                # Set inventory level
+                resp = await client.post(
+                    _admin_url("inventory_levels/set.json"),
+                    headers=_headers(),
+                    json={
+                        "location_id": location_id,
+                        "inventory_item_id": inventory_item_id,
+                        "available": 999,
+                    },
+                    timeout=30,
+                )
+                # This may fail if inventory_management is null — that's OK
+                if resp.status_code < 400:
+                    logger.debug(f"Set inventory for variant {vid} to 999")
+            except Exception:
+                pass  # Not critical — inventory_policy=continue is the main fix
+
+    logger.info(f"Ensured inventory available for product {product_id}")
+
+
+async def fix_sold_out_product(product_id: int) -> dict:
+    """Fix an existing sold-out product by updating all variant inventory policies."""
+    async with httpx.AsyncClient() as client:
+        # Fetch the product
+        resp = await client.get(
+            _admin_url(f"products/{product_id}.json"),
+            headers=_headers(),
+            timeout=30,
+        )
+        resp.raise_for_status()
+        product = resp.json().get("product", {})
+
+    await _ensure_inventory_available(product)
+    return {"product_id": product_id, "variants_fixed": len(product.get("variants", []))}
 
 
 async def upload_product_image(product_id: int, image_path: Path, alt: str = "") -> dict:
