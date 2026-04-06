@@ -1,0 +1,58 @@
+"""APScheduler setup for agent cron jobs."""
+import logging
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+scheduler = AsyncIOScheduler()
+
+
+def start_scheduler():
+    """Register all agent jobs and start the scheduler."""
+    tz = settings.agent_timezone
+
+    # Agent 3: Ranking Advisor — daily Mon-Fri at 07:00
+    from app.agents.ranking_advisor import generate_daily_report
+    scheduler.add_job(
+        generate_daily_report,
+        CronTrigger(day_of_week="mon-fri", hour=7, minute=0, timezone=tz),
+        id="ranking_advisor",
+        name="Daily Ranking Advisor",
+        replace_existing=True,
+    )
+
+    # Agent 1: Blog Writer — Tue & Fri at 10:00
+    from app.agents.blog_writer import generate_proposal
+    scheduler.add_job(
+        generate_proposal,
+        CronTrigger(day_of_week="tue,fri", hour=10, minute=0, timezone=tz),
+        id="blog_writer",
+        name="SEO Blog Writer",
+        replace_existing=True,
+    )
+
+    # Agent 2: Design Creator — Monday at 10:00
+    from app.agents.design_creator import research_trends
+    scheduler.add_job(
+        research_trends,
+        CronTrigger(day_of_week="mon", hour=10, minute=0, timezone=tz),
+        id="design_creator",
+        name="Trend Research & Design Creator",
+        replace_existing=True,
+    )
+
+    scheduler.start()
+    logger.info(f"Agent scheduler started (timezone: {tz})")
+    for job in scheduler.get_jobs():
+        logger.info(f"  Scheduled: {job.name} — next run: {job.next_run_time}")
+
+
+def stop_scheduler():
+    """Shut down the scheduler gracefully."""
+    if scheduler.running:
+        scheduler.shutdown(wait=False)
+        logger.info("Agent scheduler stopped")

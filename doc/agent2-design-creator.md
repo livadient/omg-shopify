@@ -1,0 +1,169 @@
+# Agent 2: Trend Research & Design Creator
+
+## Purpose
+
+Researches trending t-shirt designs, generates original artwork using AI, and on approval creates the product on OMG Shopify store with automatic mapping to TShirtJunkies for fulfillment.
+
+## Schedule
+
+**Weekly:** Monday at 10:00 Cyprus time (Europe/Nicosia)
+
+## Flow
+
+```
+1. Scheduler triggers design_creator.research_trends()
+2. Call Claude API with trend research prompt
+3. Claude returns 3 design concepts (description, slogans, style notes)
+4. For each concept:
+   a. Call DALL-E 3 to generate design image
+   b. Post-process: remove background for print-ready PNG
+5. Save proposals to data/proposals.json (status: "pending")
+6. Email user with design thumbnails + Approve/Reject per design
+7. User clicks Approve for chosen designs
+8. For each approved design:
+   a. Create product on OMG Shopify (with size variants)
+   b. Upload design as product image
+   c. Save design PNG to static/ for Playwright automation
+   d. Auto-create mapping in product_mappings.json
+```
+
+## Image Generation
+
+### DALL-E 3 (Primary)
+
+- **API:** OpenAI API (`openai>=1.60.0`)
+- **Model:** `dall-e-3`
+- **Size:** 1024x1024 (standard) or 1792x1024 (landscape)
+- **Cost:** $0.04/image (standard) or $0.08/image (HD)
+
+### Prompt Engineering for T-Shirt Designs
+
+```
+Create a bold, original t-shirt design: [concept description].
+Style: [vector illustration / minimalist / vintage / street art].
+Requirements:
+- Solid color background (will be removed for transparent PNG)
+- High contrast, clean edges suitable for DTG printing
+- No copyrighted characters or logos
+- [Any text/slogans centered and clearly readable]
+```
+
+### Post-Processing
+
+DALL-E 3 doesn't produce transparent PNGs natively. Background removal is handled by:
+- **Primary:** `rembg` library (runs locally, no API cost)
+- **Fallback:** remove.bg API (if rembg quality is insufficient)
+
+The final design must be:
+- Transparent PNG background
+- High resolution (upscaled if needed)
+- Clean edges for DTG (Direct-to-Garment) printing
+
+## Shopify Product Creation
+
+Uses existing `write_products` scope (already authorized).
+
+### Product Creation Payload
+
+```json
+{
+  "product": {
+    "title": "Mediterranean Sunset Graphic Tee",
+    "body_html": "<p>AI-generated description...</p>",
+    "vendor": "OMG",
+    "product_type": "T-Shirt",
+    "tags": "graphic tee, mediterranean, summer",
+    "variants": [
+      {"option1": "S", "price": "30.00", "sku": "MED-SUNSET-S"},
+      {"option1": "M", "price": "30.00", "sku": "MED-SUNSET-M"},
+      {"option1": "L", "price": "30.00", "sku": "MED-SUNSET-L"},
+      {"option1": "XL", "price": "30.00", "sku": "MED-SUNSET-XL"},
+      {"option1": "2XL", "price": "35.00", "sku": "MED-SUNSET-2XL"},
+      {"option1": "3XL", "price": "37.00", "sku": "MED-SUNSET-3XL"},
+      {"option1": "4XL", "price": "39.50", "sku": "MED-SUNSET-4XL"},
+      {"option1": "5XL", "price": "39.50", "sku": "MED-SUNSET-5XL"}
+    ],
+    "options": [{"name": "Size"}],
+    "images": [{"src": "base64_or_url"}]
+  }
+}
+```
+
+### Size Variants
+
+| Gender | Sizes | Price Range |
+|--------|-------|-------------|
+| Male (Classic Tee) | S, M, L, XL, 2XL, 3XL, 4XL, 5XL | EUR 30-39.50 |
+| Female (Women's Tee) | S, M, L, XL | EUR 30 |
+
+Prices match existing OMG products for consistency.
+
+## Product Mapping
+
+After creating the OMG product, the agent auto-creates a mapping to TShirtJunkies:
+
+- **Male designs** → TJ `classic-tee-up-to-5xl` (product ID: 9864408301915)
+- **Female designs** → TJ `women-t-shirt` (product ID: 8676301799771)
+
+Variant matching is by size (same as existing `mapper.py` logic). The new `ProductMapping` includes a `design_image` field pointing to the specific design PNG in `static/`.
+
+## Critical Refactor: Per-Product Design Images
+
+Currently `main.py:28` hardcodes:
+```python
+FRONT_DESIGN_IMAGE = STATIC_DIR / "front_design.png"
+```
+
+This must change to support multiple products:
+- Add `design_image: str = "front_design.png"` to `ProductMapping` model
+- Webhook handler looks up the correct design image from the mapping
+- Each new product gets its own PNG: `static/design_{handle}.png`
+
+## API Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/agents/design/research` | Manually trigger trend research |
+| GET | `/agents/design/proposals` | List all design proposals |
+| GET | `/agents/design/approve/{id}?token=...` | Approve design → create product |
+| GET | `/agents/design/reject/{id}?token=...` | Reject design |
+| GET | `/agents/design/preview/{id}` | View design image + details |
+
+## Email Preview Format
+
+```
+Subject: [OMG Design] 3 new t-shirt concepts ready for review
+
+For each design:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Design Image Thumbnail]
+Concept: Mediterranean Sunset
+Style: Minimalist vector illustration
+Colors: Warm oranges and deep blues
+Target: Unisex / Male tee
+
+[✅ APPROVE]  [❌ REJECT]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+## Configuration
+
+| Variable | Purpose |
+|----------|---------|
+| `ANTHROPIC_API_KEY` | Claude API for trend research + product descriptions |
+| `OPENAI_API_KEY` | DALL-E 3 for design generation |
+
+## Modules
+
+- **Agent:** `app/agents/design_creator.py`
+- **Image generation:** `app/agents/image_client.py`
+- **Product creation:** `app/shopify_product_creator.py`
+- **Dependencies:** `app/agents/llm_client.py`, `app/agents/approval.py`, `app/mapper.py`
+
+## Copyright Safety
+
+All designs are AI-generated originals. The Claude prompt explicitly instructs:
+- No copyrighted characters, logos, or trademarks
+- No derivative works of existing designs
+- Original compositions only
+- If text is included, it must be original slogans (not copyrighted phrases)

@@ -212,11 +212,13 @@ async def handle_order_created(
     variant_map: dict[int, int] = {}  # source_variant_id -> target_variant_id
     product_id_map: dict[int, int] = {}  # source_variant_id -> target_product_id
     handle_map: dict[int, str] = {}  # source_variant_id -> source_handle
+    design_map: dict[int, str] = {}  # source_variant_id -> design image filename
     for mapping in config.mappings:
         for v in mapping.variants:
             variant_map[v.source_variant_id] = v.target_variant_id
             product_id_map[v.source_variant_id] = mapping.target_product_id
             handle_map[v.source_variant_id] = mapping.source_handle
+            design_map[v.source_variant_id] = getattr(mapping, "design_image", "front_design.png")
 
     items_mapped = []
     items_skipped = []
@@ -240,7 +242,8 @@ async def handle_order_created(
                 "title": line_item.get("title", ""),
                 "variant_title": line_item.get("variant_title", ""),
                 "qstomizer_url": qstomizer_url,
-                "front_design_url": f"/static/{FRONT_DESIGN_IMAGE.name}",
+                "design_image": design_map.get(source_variant_id, "front_design.png"),
+                "front_design_url": f"/static/{design_map.get(source_variant_id, 'front_design.png')}",
             })
         else:
             items_skipped.append({
@@ -297,11 +300,15 @@ async def _process_order_background(
         }
 
         try:
+            design_file = STATIC_DIR / item.get("design_image", "front_design.png")
+            if not design_file.exists():
+                design_file = FRONT_DESIGN_IMAGE  # fallback to default
+
             result = await customize_and_add_to_cart(
                 product_type=product_type,
                 size=size,
                 color="White",
-                image_path=str(FRONT_DESIGN_IMAGE),
+                image_path=str(design_file),
                 quantity=item["quantity"],
                 headless=True,
                 shipping=shipping,
@@ -687,6 +694,216 @@ async def fulfill_order_submit(request: Request) -> dict:
     )
 
 
+# ─── AI Agent Endpoints ────────────────────────────────────────────────
+
+@app.post("/agents/blog/generate")
+async def blog_generate():
+    """Manually trigger a new blog proposal."""
+    from app.agents.blog_writer import generate_proposal
+    proposal = await generate_proposal()
+    return {
+        "proposal_id": proposal["id"],
+        "status": "pending",
+        "title": proposal["data"].get("title", "Untitled"),
+        "message": "Email sent with preview and approval links",
+    }
+
+
+@app.get("/agents/blog/proposals")
+async def blog_proposals():
+    """List all blog proposals."""
+    from app.agents.approval import list_proposals
+    return {"proposals": list_proposals(agent="blog")}
+
+
+@app.get("/agents/blog/preview/{proposal_id}", response_class=HTMLResponse)
+async def blog_preview(proposal_id: str):
+    """View full blog post HTML."""
+    from app.agents.approval import get_proposal
+    proposal = get_proposal(proposal_id)
+    if not proposal:
+        return HTMLResponse("<h1>Proposal not found</h1>", status_code=404)
+    data = proposal["data"]
+    return HTMLResponse(f"""
+    <html><head><title>{data.get('title', 'Preview')}</title>
+    <style>body{{font-family:sans-serif;max-width:800px;margin:40px auto;padding:20px;}}
+    img{{max-width:100%;}}</style></head>
+    <body>
+        <p style="color:#6b7280;font-size:13px;">Status: {proposal['status']} | Created: {proposal['created_at']}</p>
+        <h1>{data.get('title', 'Untitled')}</h1>
+        <p style="color:#6b7280;font-style:italic;">{data.get('meta_description', '')}</p>
+        <hr>
+        {data.get('body_html', '<p>No content</p>')}
+        <hr>
+        <p style="color:#6b7280;">Tags: {data.get('tags', '')} | Keywords: {', '.join(data.get('target_keywords', []))}</p>
+    </body></html>
+    """)
+
+
+@app.get("/agents/blog/approve/{proposal_id}", response_class=HTMLResponse)
+async def blog_approve(proposal_id: str, token: str = ""):
+    """Approve and publish a blog post."""
+    from app.agents.approval import validate_token, update_status
+    proposal = validate_token(proposal_id, token)
+    if not proposal:
+        return HTMLResponse(
+            "<h1>Invalid or expired link</h1><p>This proposal may have already been processed.</p>",
+            status_code=403,
+        )
+    # Execute
+    from app.agents.blog_writer import execute_approval
+    try:
+        article = await execute_approval(proposal_id)
+        return HTMLResponse(f"""
+        <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
+            <h1 style="color:#059669;">Blog Post Published!</h1>
+            <p><strong>{proposal['data'].get('title', '')}</strong></p>
+            <p>Article ID: {article.get('id', '?')}</p>
+            <a href="https://omg.com.cy/blogs" style="color:#2563eb;">View on store</a>
+        </body></html>
+        """)
+    except Exception as e:
+        return HTMLResponse(f"<h1>Error publishing</h1><p>{e}</p>", status_code=500)
+
+
+@app.get("/agents/blog/reject/{proposal_id}", response_class=HTMLResponse)
+async def blog_reject(proposal_id: str, token: str = ""):
+    """Reject a blog proposal."""
+    from app.agents.approval import validate_token, update_status
+    proposal = validate_token(proposal_id, token)
+    if not proposal:
+        return HTMLResponse(
+            "<h1>Invalid or expired link</h1>", status_code=403,
+        )
+    update_status(proposal_id, "rejected")
+    return HTMLResponse("""
+    <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
+        <h1 style="color:#dc2626;">Blog Post Rejected</h1>
+        <p>A new one will be generated on the next scheduled run.</p>
+    </body></html>
+    """)
+
+
+@app.post("/agents/design/research")
+async def design_research():
+    """Trigger trend research and design generation."""
+    from app.agents.design_creator import research_trends
+    proposals = await research_trends()
+    return {
+        "proposals": [
+            {
+                "proposal_id": p["id"],
+                "status": "pending",
+                "concept": p["data"].get("name", "Untitled"),
+                "style": p["data"].get("style", "?"),
+                "image_url": f"/static/proposals/{p['data'].get('image_filename', '')}" if p["data"].get("image_filename") else None,
+            }
+            for p in proposals
+        ],
+        "message": f"{len(proposals)} designs generated. Email sent for review.",
+    }
+
+
+@app.get("/agents/design/proposals")
+async def design_proposals():
+    """List all design proposals."""
+    from app.agents.approval import list_proposals
+    return {"proposals": list_proposals(agent="design")}
+
+
+@app.get("/agents/design/preview/{proposal_id}", response_class=HTMLResponse)
+async def design_preview(proposal_id: str):
+    """View design image and details."""
+    from app.agents.approval import get_proposal
+    proposal = get_proposal(proposal_id)
+    if not proposal:
+        return HTMLResponse("<h1>Proposal not found</h1>", status_code=404)
+    data = proposal["data"]
+    image_html = ""
+    if data.get("image_filename"):
+        image_html = f'<img src="/static/proposals/{data["image_filename"]}" style="max-width:500px;">'
+    return HTMLResponse(f"""
+    <html><head><title>Design: {data.get('name', 'Preview')}</title>
+    <style>body{{font-family:sans-serif;max-width:800px;margin:40px auto;padding:20px;}}</style></head>
+    <body>
+        <p style="color:#6b7280;">Status: {proposal['status']} | Created: {proposal['created_at']}</p>
+        <h1>{data.get('name', 'Untitled')}</h1>
+        {image_html}
+        <table style="margin-top:16px;">
+            <tr><td style="color:#6b7280;padding:4px 8px;">Style:</td><td>{data.get('style', '?')}</td></tr>
+            <tr><td style="color:#6b7280;padding:4px 8px;">Text:</td><td>{data.get('text_on_shirt', 'None')}</td></tr>
+            <tr><td style="color:#6b7280;padding:4px 8px;">Type:</td><td>{data.get('product_type', '?')}</td></tr>
+            <tr><td style="color:#6b7280;padding:4px 8px;">Title:</td><td>{data.get('suggested_title', '?')}</td></tr>
+            <tr><td style="color:#6b7280;padding:4px 8px;">Tags:</td><td>{data.get('suggested_tags', '?')}</td></tr>
+            <tr><td style="color:#6b7280;padding:4px 8px;">Reasoning:</td><td>{data.get('reasoning', '?')}</td></tr>
+        </table>
+    </body></html>
+    """)
+
+
+@app.get("/agents/design/approve/{proposal_id}", response_class=HTMLResponse)
+async def design_approve(proposal_id: str, token: str = ""):
+    """Approve a design — creates product on Shopify + mapping."""
+    from app.agents.approval import validate_token
+    proposal = validate_token(proposal_id, token)
+    if not proposal:
+        return HTMLResponse(
+            "<h1>Invalid or expired link</h1><p>This proposal may have already been processed.</p>",
+            status_code=403,
+        )
+    from app.agents.design_creator import execute_approval
+    try:
+        result = await execute_approval(proposal_id)
+        return HTMLResponse(f"""
+        <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
+            <h1 style="color:#059669;">Product Created!</h1>
+            <p><strong>{proposal['data'].get('suggested_title', proposal['data'].get('name', ''))}</strong></p>
+            <p>Product ID: {result.get('product_id', '?')}</p>
+            <p>Handle: {result.get('product_handle', '?')}</p>
+            <a href="{result.get('product_url', '#')}" style="color:#2563eb;">View on store</a>
+            <p style="color:#6b7280;margin-top:16px;">Mapping to TShirtJunkies has been created automatically.</p>
+        </body></html>
+        """)
+    except Exception as e:
+        return HTMLResponse(f"<h1>Error creating product</h1><p>{e}</p>", status_code=500)
+
+
+@app.get("/agents/design/reject/{proposal_id}", response_class=HTMLResponse)
+async def design_reject(proposal_id: str, token: str = ""):
+    """Reject a design proposal."""
+    from app.agents.approval import validate_token, update_status
+    proposal = validate_token(proposal_id, token)
+    if not proposal:
+        return HTMLResponse("<h1>Invalid or expired link</h1>", status_code=403)
+    update_status(proposal_id, "rejected")
+    return HTMLResponse("""
+    <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
+        <h1 style="color:#dc2626;">Design Rejected</h1>
+        <p>New designs will be generated on the next scheduled run (Monday 10:00).</p>
+    </body></html>
+    """)
+
+
+@app.post("/agents/ranking/generate")
+async def ranking_generate(market: str | None = None):
+    """Manually trigger a ranking report."""
+    from app.agents.ranking_advisor import generate_daily_report
+    report = await generate_daily_report(market_override=market)
+    return {
+        "status": "sent",
+        "market_focus": report.get("market_focus", "?"),
+        "recommendations_count": len(report.get("top_actions", [])),
+        "message": "Daily ranking report sent via email",
+    }
+
+
+@app.get("/agents/ranking/history")
+async def ranking_history(limit: int = 30):
+    """View past ranking reports."""
+    from app.agents.ranking_advisor import get_history
+    return {"reports": get_history(limit)}
+
+
 @app.get("/shopify-auth", response_class=HTMLResponse)
 async def shopify_auth_start():
     """Redirect to Shopify OAuth to authorize the app."""
@@ -694,7 +911,7 @@ async def shopify_auth_start():
     domain = settings.omg_shopify_domain
     if not domain.endswith(".myshopify.com"):
         domain = "52922c-2.myshopify.com"
-    scopes = "read_orders,write_fulfillments,read_products,write_products,read_customers,write_customers,read_inventory,write_inventory,read_shipping,write_shipping,read_order_edits,write_order_edits"
+    scopes = "read_orders,write_fulfillments,read_products,write_products,read_customers,write_customers,read_inventory,write_inventory,read_shipping,write_shipping,read_order_edits,write_order_edits,read_content,write_content"
     redirect_uri = "http://localhost:8080/shopify-auth/callback"
     auth_url = (
         f"https://{domain}/admin/oauth/authorize"
@@ -834,7 +1051,32 @@ async def print_endpoints():
     print(f"  View Mappings:   {base}/mappings")
     if public_url:
         print(f"  Webhook (public): {public_url}/webhook/order-created")
+    print(f"  Agent: Blog       {base}/agents/blog/generate (POST)")
+    print(f"  Agent: Design     {base}/agents/design/research (POST)")
+    print(f"  Agent: Ranking    {base}/agents/ranking/generate (POST)")
+    print("=" * 50)
+
+    # Start AI agent scheduler
+    if settings.anthropic_api_key:
+        try:
+            from app.agents.scheduler import start_scheduler
+            start_scheduler()
+            print("  AI Agents:       Scheduler started")
+        except Exception as e:
+            print(f"  AI Agents:       Failed to start ({e})")
+    else:
+        print("  AI Agents:       Disabled (no ANTHROPIC_API_KEY)")
+
     print("=" * 50 + "\n")
+
+
+@app.on_event("shutdown")
+async def shutdown_scheduler():
+    try:
+        from app.agents.scheduler import stop_scheduler
+        stop_scheduler()
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

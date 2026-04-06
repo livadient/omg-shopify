@@ -16,6 +16,7 @@ class ProductMapping(BaseModel):
     target_title: str
     target_product_id: int
     variants: list[VariantMapping]
+    design_image: str = "front_design.png"  # per-product design PNG in static/
 
 
 class MappingConfig(BaseModel):
