@@ -1022,6 +1022,42 @@ async def _register_shopify_webhook(public_url: str) -> None:
         print(f"  [OK] Webhook created: {webhook_address}")
 
 
+# ---------------------------------------------------------------------------
+# SEO Management endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/seo/fix-handles")
+async def seo_fix_handles(background_tasks: BackgroundTasks):
+    """Fix duplicate product handles and standardize na→va spelling."""
+    from app.seo_management import fix_handles
+    background_tasks.add_task(fix_handles)
+    return {"status": "started", "task": "fix-handles", "message": "Fixing product handles in background"}
+
+
+@app.post("/seo/homepage")
+async def seo_homepage(background_tasks: BackgroundTasks):
+    """Update homepage SEO meta tags."""
+    from app.seo_management import update_homepage_seo
+    background_tasks.add_task(update_homepage_seo)
+    return {"status": "started", "task": "homepage-seo", "message": "Updating homepage SEO in background"}
+
+
+@app.post("/seo/collections")
+async def seo_create_collections(background_tasks: BackgroundTasks):
+    """Create Cyprus-specific product collections."""
+    from app.seo_management import create_collections
+    background_tasks.add_task(create_collections)
+    return {"status": "started", "task": "create-collections", "message": "Creating collections in background"}
+
+
+@app.post("/seo/all")
+async def seo_run_all(background_tasks: BackgroundTasks):
+    """Run all SEO optimization tasks."""
+    from app.seo_management import run_all
+    background_tasks.add_task(run_all)
+    return {"status": "started", "task": "all", "message": "Running all SEO tasks in background"}
+
+
 @app.on_event("startup")
 async def print_endpoints():
     base = f"http://localhost:{settings.port}"

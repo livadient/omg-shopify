@@ -1,8 +1,8 @@
 {
   "mappings": [
     {
-      "source_handle": "astous-na-laloun-graphic-tee-male-eu-edition",
-      "source_title": "Astous na Laloun Graphic Tee Male \u2014 EU Edition",
+      "source_handle": "astous-va-laloun-graphic-tee-male-eu-edition",
+      "source_title": "Astous va Laloun Graphic Tee Male \u2014 EU Edition",
       "target_handle": "classic-tee-up-to-5xl",
       "target_title": "Classic Tee (up to 5XL)",
       "target_product_id": 9864408301915,
@@ -63,11 +63,12 @@
           "target_title": "5XL",
           "target_price": "22.00"
         }
-      ]
+      ],
+      "design_image": "front_design.png"
     },
     {
-      "source_handle": "astous-na-laloun-graphic-tee-female-eu-edition",
-      "source_title": "Astous na Laloun Graphic Tee Female \u2014 EU Edition",
+      "source_handle": "astous-va-laloun-graphic-tee-female-eu-edition",
+      "source_title": "Astous va Laloun Graphic Tee Female \u2014 EU Edition",
       "target_handle": "women-t-shirt",
       "target_title": "Women's T-Shirt",
       "target_product_id": 8676301799771,
@@ -100,7 +101,150 @@
           "target_title": "XL",
           "target_price": "23.00"
         }
-      ]
+      ],
+      "design_image": "front_design.png"
+    },
+    {
+      "source_handle": "digital-detox-spring-tee",
+      "source_title": "Digital Detox Spring Tee",
+      "target_handle": "women-t-shirt",
+      "target_title": "Women T-shirt",
+      "target_product_id": 8676301799771,
+      "variants": [
+        {
+          "source_variant_id": 56598583640444,
+          "source_title": "S",
+          "target_variant_id": 47361096253787,
+          "target_title": "S",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56598583673212,
+          "source_title": "M",
+          "target_variant_id": 47361096286555,
+          "target_title": "M",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56598583705980,
+          "source_title": "L",
+          "target_variant_id": 47361096319323,
+          "target_title": "L",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56598583738748,
+          "source_title": "XL",
+          "target_variant_id": 47361096352091,
+          "target_title": "XL",
+          "target_price": "18.95"
+        }
+      ],
+      "design_image": "design_digital-detox-spring-tee.png"
+    },
+    {
+      "source_handle": "digital-detox-mediterranean-escape-tee",
+      "source_title": "Digital Detox Mediterranean Escape Tee",
+      "target_handle": "classic-tee-up-to-5xl",
+      "target_title": "Classic Tee Up To 5XL",
+      "target_product_id": 9864408301915,
+      "variants": [
+        {
+          "source_variant_id": 56598585049468,
+          "source_title": "Male / S",
+          "target_variant_id": 50461540614491,
+          "target_title": "S",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56598585082236,
+          "source_title": "Male / M",
+          "target_variant_id": 50461540647259,
+          "target_title": "M",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56598585115004,
+          "source_title": "Male / L",
+          "target_variant_id": 50461540680027,
+          "target_title": "L",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56598585147772,
+          "source_title": "Male / XL",
+          "target_variant_id": 50461540712795,
+          "target_title": "XL",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56598585180540,
+          "source_title": "Male / 2XL",
+          "target_variant_id": 50461540745563,
+          "target_title": "2XL",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56598585213308,
+          "source_title": "Male / 3XL",
+          "target_variant_id": 50461540778331,
+          "target_title": "3XL",
+          "target_price": "19.95"
+        },
+        {
+          "source_variant_id": 56598585246076,
+          "source_title": "Male / 4XL",
+          "target_variant_id": 50461542056283,
+          "target_title": "4XL",
+          "target_price": "19.95"
+        },
+        {
+          "source_variant_id": 56598585278844,
+          "source_title": "Male / 5XL",
+          "target_variant_id": 50461542089051,
+          "target_title": "5XL",
+          "target_price": "19.95"
+        }
+      ],
+      "design_image": "design_digital-detox-mediterranean-escape-tee.png"
+    },
+    {
+      "source_handle": "digital-detox-mediterranean-escape-tee",
+      "source_title": "Digital Detox Mediterranean Escape Tee",
+      "target_handle": "women-t-shirt",
+      "target_title": "Women T-shirt",
+      "target_product_id": 8676301799771,
+      "variants": [
+        {
+          "source_variant_id": 56598585311612,
+          "source_title": "Female / S",
+          "target_variant_id": 47361096253787,
+          "target_title": "S",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56598585344380,
+          "source_title": "Female / M",
+          "target_variant_id": 47361096286555,
+          "target_title": "M",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56598585377148,
+          "source_title": "Female / L",
+          "target_variant_id": 47361096319323,
+          "target_title": "L",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56598585409916,
+          "source_title": "Female / XL",
+          "target_variant_id": 47361096352091,
+          "target_title": "XL",
+          "target_price": "18.95"
+        }
+      ],
+      "design_image": "design_digital-detox-mediterranean-escape-tee.png"
     }
   ]
 }

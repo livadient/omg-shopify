@@ -98,8 +98,8 @@ async def remove_background(image_path: Path) -> Path:
         logger.info(f"Background removed: {output_path}")
         return output_path
 
-    except ImportError:
-        logger.warning("rembg not installed, skipping background removal")
+    except (ImportError, SystemExit):
+        logger.warning("rembg not available (missing onnxruntime?), skipping background removal")
         return image_path
     except Exception as e:
         logger.warning(f"Background removal failed: {e}, using original")
