@@ -155,6 +155,21 @@ async def _ensure_inventory_available(product: dict) -> None:
                 if not location_id:
                     continue
 
+                # First connect inventory item to the location (required if not already connected)
+                connect_resp = await client.post(
+                    _admin_url("inventory_levels/connect.json"),
+                    headers=_headers(),
+                    json={
+                        "location_id": location_id,
+                        "inventory_item_id": inventory_item_id,
+                    },
+                    timeout=30,
+                )
+                # 422 means already connected — that's fine
+                if connect_resp.status_code not in (200, 201, 422):
+                    logger.warning(f"Connect inventory {inventory_item_id}: {connect_resp.status_code} {connect_resp.text[:200]}")
+
+                # Now set the level
                 resp = await client.post(
                     _admin_url("inventory_levels/set.json"),
                     headers=_headers(),
