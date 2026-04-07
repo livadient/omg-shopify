@@ -71,7 +71,8 @@ async def send_error_email(agent_name: str, error: Exception, context: str = "")
     html = f"""
     <div style="font-family:sans-serif;max-width:650px;margin:0 auto;">
         <div style="background:#dc2626;color:white;padding:20px;border-radius:8px 8px 0 0;">
-            <h2 style="margin:0;">Agent Error: {agent_name}</h2>
+            <h2 style="margin:0;">{agent_name} ran into trouble</h2>
+            <p style="margin:4px 0 0;opacity:0.9;">Sorry boss, I hit a wall on my last run. Here's what happened:</p>
         </div>
         <div style="padding:20px;border:1px solid #e5e7eb;">
             <p><strong>Error:</strong> {type(error).__name__}: {error}</p>
@@ -82,12 +83,12 @@ async def send_error_email(agent_name: str, error: Exception, context: str = "")
             </details>
         </div>
         <div style="padding:12px;text-align:center;color:#9ca3af;font-size:12px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">
-            OMG AI Agents | {settings.server_base_url}
+            {agent_name} | {settings.server_base_url}
         </div>
     </div>
     """
 
     await send_agent_email(
-        subject=f"[OMG ERROR] {agent_name} failed: {type(error).__name__}",
+        subject=f"[{agent_name}] Oops — {type(error).__name__}",
         html_body=html,
     )

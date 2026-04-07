@@ -72,7 +72,7 @@ async def generate_proposal() -> dict:
     except Exception as e:
         logger.exception("Blog Writer failed")
         from app.agents.agent_email import send_error_email
-        await send_error_email("Blog Writer", e)
+        await send_error_email("Olive", e)
         raise
 
 
@@ -130,7 +130,8 @@ Write a new, unique SEO blog post. Choose a fresh angle that complements the exi
     html = f"""
     <div style="font-family:sans-serif;max-width:650px;margin:0 auto;">
         <div style="background:#059669;color:white;padding:20px;border-radius:8px 8px 0 0;">
-            <h2 style="margin:0;">New Blog Post Ready for Review</h2>
+            <h2 style="margin:0;">Olive here — new post ready!</h2>
+            <p style="margin:4px 0 0;opacity:0.9;">I've put together something I think our readers will love. Take a look?</p>
         </div>
         <div style="padding:20px;border:1px solid #e5e7eb;">
             <h3 style="margin-top:0;color:#111;">{blog_data.get('title', 'Untitled')}</h3>
@@ -154,7 +155,7 @@ Write a new, unique SEO blog post. Choose a fresh angle that complements the exi
     """
 
     await send_agent_email(
-        subject=f"[OMG Blog] New post ready: \"{blog_data.get('title', 'Untitled')}\"",
+        subject=f"[Olive] New post ready: \"{blog_data.get('title', 'Untitled')}\"",
         html_body=html,
     )
 
