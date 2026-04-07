@@ -6,13 +6,13 @@ import pytest
 
 class TestStartScheduler:
     def test_registers_all_jobs(self):
-        """Verify that start_scheduler registers the expected 4 jobs."""
+        """Verify that start_scheduler registers the expected 5 jobs."""
         with patch("app.agents.scheduler.scheduler") as mock_scheduler:
             mock_scheduler.get_jobs.return_value = []
             from app.agents.scheduler import start_scheduler
             start_scheduler()
-            # 4 add_job calls: ranking_advisor, blog_writer, design_creator, seo_optimizer
-            assert mock_scheduler.add_job.call_count == 4
+            # 5 add_job calls: ranking_advisor, blog_writer, design_creator, seo_optimizer, translation_checker
+            assert mock_scheduler.add_job.call_count == 5
             mock_scheduler.start.assert_called_once()
 
     def test_job_ids(self):
@@ -30,6 +30,7 @@ class TestStartScheduler:
             assert "blog_writer" in job_ids
             assert "design_creator" in job_ids
             assert "seo_optimizer" in job_ids
+            assert "translation_checker" in job_ids
 
     def test_job_schedules(self):
         """Verify the cron triggers have expected hours."""

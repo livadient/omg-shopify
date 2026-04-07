@@ -179,11 +179,11 @@ def _update_local_mappings():
 # Task 2: Optimize homepage for Cyprus t-shirt searches
 # ---------------------------------------------------------------------------
 
-HOMEPAGE_TITLE = "Custom T-Shirts Cyprus | Graphic Tees | OMG.com.cy"
+HOMEPAGE_TITLE = "Graphic T-Shirts Cyprus | Unique Tees | OMG.com.cy"
 HOMEPAGE_META_DESCRIPTION = (
-    "Premium custom graphic t-shirts designed in Cyprus. "
+    "Premium graphic t-shirts designed in Cyprus. "
     "Free shipping across Cyprus & Greece. "
-    "Unique designs printed on demand by TShirtJunkies."
+    "Original designs, unique styles — only at OMG.com.cy."
 )
 
 

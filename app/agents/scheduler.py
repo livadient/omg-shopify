@@ -55,6 +55,16 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Translation Checker — daily at 02:00
+    from app.agents.translation_checker import check_and_fix_translations
+    scheduler.add_job(
+        check_and_fix_translations,
+        CronTrigger(hour=2, minute=0, timezone=tz),
+        id="translation_checker",
+        name="Greek Translation Checker",
+        replace_existing=True,
+    )
+
     scheduler.start()
     logger.info(f"Agent scheduler started (timezone: {tz})")
     for job in scheduler.get_jobs():
