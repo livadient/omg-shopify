@@ -14,7 +14,7 @@ Admin API version: **2024-01**
 
 Uses a custom Shopify app with OAuth. The access token is permanent (no refresh needed).
 
-**OAuth scopes:** `read_orders`, `write_fulfillments`, `read_products`, `write_products`, `read_customers`, `write_customers`, `read_inventory`, `write_inventory`, `read_shipping`, `write_shipping`, `read_order_edits`, `write_order_edits`
+**OAuth scopes:** `read_orders`, `write_fulfillments`, `read_products`, `write_products`, `read_customers`, `write_customers`, `read_inventory`, `write_inventory`, `read_shipping`, `write_shipping`, `read_order_edits`, `write_order_edits`, `read_translations`, `write_translations`, `read_locales`, `write_locales`
 
 **Base URL:** `https://52922c-2.myshopify.com/admin/api/2024-01/`
 
@@ -70,7 +70,7 @@ Run via CLI: `.venv/Scripts/python -m app.seo_management [task]`
 
 1. **`fix-handles`** -- Fix duplicate product URL handles and standardize "na" -> "va" spelling in Astous product handles/titles. Also updates `product_mappings.json` to match.
 
-2. **`homepage-seo`** -- Update homepage SEO meta tags via shop metafields (GraphQL Admin API). Sets title to "Custom T-Shirts Cyprus | Graphic Tees | OMG.com.cy" and meta description with Cyprus-focused keywords. Falls back to manual instructions if metafields approach fails.
+2. **`homepage-seo`** -- Update homepage SEO meta tags via shop metafields (GraphQL Admin API). Sets title to "Graphic T-Shirts Cyprus | Unique Tees | OMG.com.cy" and meta description with Cyprus-focused keywords. Falls back to manual instructions if metafields approach fails.
 
 3. **`create-collections`** -- Create Cyprus-specific custom collections ("Cyprus Graphic Tees", "Greek Cyprus Shirts") with bilingual descriptions (English + Greek) and SEO metadata. Automatically adds all Astous products to the collections.
 
@@ -104,11 +104,23 @@ tshirtjunkies.co is a Shopify store. The following public endpoints are availabl
 - Cart permalink format: `https://tshirtjunkies.co/cart/variant_id:qty,variant_id:qty`
 - Payment requires human confirmation (no programmatic checkout without a Storefront API token)
 
+### Translations (`app/shopify_translations.py`)
+
+Uses the Shopify GraphQL Translations API to manage Greek (el) translations for all store content.
+
+- `get_untranslated_resources(resource_type, locale)` -- Query `translatableResources` to find fields missing translations or with outdated translations
+- `register_translations(resource_id, translations, locale)` -- Write translations via `translationsRegister` mutation
+- Skips `handle` fields (URL slugs must remain in English)
+- Used by the Translation Checker agent (Hermes)
+
+**Required scopes:** `read_translations`, `write_translations`, `read_locales`, `write_locales`
+
 ## Key Files
 
 - `app/omg_fulfillment.py` -- Order lookup, fulfillment creation, OAuth token exchange
 - `app/shopify_product_creator.py` -- Product creation with Gender+Size variants, mockup fetching
 - `app/shopify_blog.py` -- Blog article CRUD
 - `app/seo_management.py` -- Handle fixes, homepage SEO, collection creation
+- `app/shopify_translations.py` -- Shopify GraphQL Translations API (EN→GR)
 - `app/shopify_client.py` -- Public storefront product fetching
 - `app/cart_client.py` -- TShirtJunkies cart operations

@@ -131,17 +131,15 @@ Mapping is defined in `SHIPPING_METHOD_MAP` in `qstomizer_automation.py`. For CY
 
 Mappings are stored in `product_mappings.json` at the project root. Variants are matched by size option.
 
-### Male Tee (S-5XL) - Full coverage
+### Astous na Laloun - Limited Edition Tee (unified product)
 
-- **OMG:** `astous-na-laloun-graphic-tee-male-eu-edition` (EUR 30-39.50)
-- **TShirtJunkies:** `classic-tee-up-to-5xl` (EUR 20-22)
+The old separate male/female EU edition products have been replaced by a single unified product with Gender+Size variants:
 
-### Female Tee (S-XL) - Full coverage
+- **OMG:** `astous-na-laloun-limited-edition-tee` (EUR 30-39.50)
+- **TShirtJunkies (male variants):** `classic-tee-up-to-5xl` (EUR 20-22) -- sizes S-5XL
+- **TShirtJunkies (female variants):** `women-t-shirt` (EUR 23) -- sizes S-XL
 
-- **OMG:** `astous-na-laloun-graphic-tee-female-eu-edition` (EUR 30)
-- **TShirtJunkies:** `women-t-shirt` (EUR 23)
-
-Note: OMG female EU edition only goes up to XL, which matches TJ perfectly.
+Note: The old `astous-na-laloun-graphic-tee-male-eu-edition` and `astous-na-laloun-graphic-tee-female-eu-edition` mappings have been removed.
 
 ## Qstomizer (Product Customization)
 
@@ -245,15 +243,17 @@ app/
   seo_management.py      — SEO optimization: fix handles, homepage meta, create collections
   shopify_blog.py        — Shopify Blog Article Admin API
   shopify_product_creator.py — Create products with Gender+Size variants, upload images, fetch mockups
+  shopify_translations.py — Shopify GraphQL Translations API: read/write translations for products
   agents/
     llm_client.py        — Anthropic Claude API wrapper (generate, generate_with_search, generate_json)
-    image_client.py      — OpenAI DALL-E 3 image generation + rembg background removal
+    image_client.py      — OpenAI DALL-E 3 image generation + rembg background removal + text validation
     scheduler.py         — APScheduler cron setup for all agent jobs
     approval.py          — Token-based proposal storage and approval workflow
     agent_email.py       — Shared email utilities for agents (inline images, error notifications)
-    blog_writer.py       — Agent 1: SEO blog post generation
-    design_creator.py    — Agent 2: Trend research, design generation, mockup pre-caching
-    ranking_advisor.py   — Agent 3: Daily SEO and Google Ads recommendations
+    blog_writer.py       — Agent "Olive": SEO blog post generation
+    design_creator.py    — Agent "Mango": Trend research, design generation, mockup pre-caching
+    ranking_advisor.py   — Agent "Atlas": Daily SEO and Google Ads recommendations
+    translation_checker.py — Agent "Hermes": Daily translation checker (English→Greek via Claude)
 product_mappings.json    — Saved variant ID mappings
 data/
   proposals.json         — Agent proposal storage (persisted via Docker volume)
@@ -270,12 +270,25 @@ tests/                   — Unit tests (pytest) — 130 tests, all mocked, no e
 
 All times are Cyprus time (Europe/Nicosia):
 
-| Agent | Schedule | Time | Purpose |
-|-------|----------|------|---------|
-| Design Creator | Mon-Fri | 04:00 | Research trends, generate 5 designs, pre-cache mockups |
-| SEO Optimizer | Mon-Fri | 04:30 | Fix handles, homepage SEO, create collections |
-| Blog Writer | Tue, Fri | 05:00 | Generate SEO blog post for review |
-| Ranking Advisor | Mon-Fri | 07:00 | Daily SEO/Google Ads recommendations |
+| Agent (Name) | Schedule | Time | Purpose |
+|--------------|----------|------|---------|
+| Translation Checker (Hermes) | Daily | 02:00 | Check for untranslated/outdated content, translate EN→GR |
+| Design Creator (Mango) | Mon-Fri | 04:00 | Research trends, generate 5 designs, pre-cache mockups |
+| SEO Optimizer (Sphinx) | Mon-Fri | 04:30 | Fix handles, homepage SEO, create collections |
+| Blog Writer (Olive) | Tue, Fri | 05:00 | Generate SEO blog post for review |
+| Ranking Advisor (Atlas) | Mon-Fri | 07:00 | Daily SEO/Google Ads recommendations |
+
+## Agent Names and Personalities
+
+Each agent has a name and personality reflected in email communications:
+
+| Agent | Name | Email Color | Greeting Style |
+|-------|------|-------------|----------------|
+| Design Creator | Mango | Purple | "Hey boss, Mango here!" |
+| Blog Writer | Olive | Green | "Olive here -- new post ready!" |
+| Ranking Advisor | Atlas | Blue | "Atlas reporting for duty" |
+| Translation Checker | Hermes | Blue | "Hermes here -- translation run complete" |
+| SEO Optimizer | Sphinx | N/A | Does not send emails |
 
 ## Documentation Index
 
@@ -297,6 +310,7 @@ Detailed documentation for every subsystem is in `doc/`:
 | [agent1-blog-writer.md](doc/agent1-blog-writer.md) | SEO Blog Writer agent specification |
 | [agent2-design-creator.md](doc/agent2-design-creator.md) | Design Creator agent (5 types, mockup pre-caching) |
 | [agent3-ranking-advisor.md](doc/agent3-ranking-advisor.md) | Ranking Advisor agent (market rotation) |
+| [agent4-translation-checker.md](doc/agent4-translation-checker.md) | Translation Checker agent (EN→GR via Claude) |
 
 ## Testing
 
@@ -308,7 +322,7 @@ Run unit tests: `pytest tests/ -v`
 
 The service connects to the OMG Shopify store via a custom app using OAuth. The app has the following scopes:
 
-`read_orders`, `write_fulfillments`, `read_products`, `write_products`, `read_customers`, `write_customers`, `read_inventory`, `write_inventory`, `read_shipping`, `write_shipping`, `read_order_edits`, `write_order_edits`
+`read_orders`, `write_fulfillments`, `read_products`, `write_products`, `read_customers`, `write_customers`, `read_inventory`, `write_inventory`, `read_shipping`, `write_shipping`, `read_order_edits`, `write_order_edits`, `read_translations`, `write_translations`, `read_locales`, `write_locales`
 
 ### Setup
 
@@ -440,6 +454,36 @@ All t-shirt products get standard metafields set automatically on creation. Thes
 | `custom.instructions` | multi_line_text_field | Wash/care instructions |
 
 Note: The key names (`period_shipping`, `periods_pec`) match the existing store convention (legacy naming from beauty products).
+
+## Shopify Translations (EN→GR)
+
+The Translation Checker agent ("Hermes") uses the Shopify GraphQL Translations API to maintain Greek translations for all store content.
+
+### How It Works
+
+1. `shopify_translations.py` queries `translatableResources` via GraphQL to find all translatable fields for products, collections, etc.
+2. Compares each field's `translatableContent` (English) with its existing `translatedContent` (Greek)
+3. Fields that are untranslated or outdated (English changed since last translation) are collected
+4. Claude translates the English text to Greek
+5. `translationsRegister` GraphQL mutation writes the translations back to Shopify
+6. `handle` fields are always skipped (URL slugs must remain in English)
+
+### Email Report
+
+Hermes sends an email with an English/Greek side-by-side HTML table showing all translations made in the run. If nothing needed translating, a short "all up to date" message is sent instead.
+
+### API Scopes Required
+
+`read_translations`, `write_translations`, `read_locales`, `write_locales` -- added to the OAuth scope list. Re-authorization via `/shopify-auth` is required if these scopes were not previously granted.
+
+## DALL-E Text Validation
+
+The image client (`app/agents/image_client.py`) includes text validation for generated designs:
+
+- `generate_text_design` now uses transparent RGBA background instead of white
+- `validate_design_text(image_path, expected_text)` -- Claude vision reads text in generated images and checks correctness
+- `generate_design_with_text_check(concept, expected_text, ...)` -- generates via DALL-E, validates text with Claude, regenerates with correction prompt if wrong (up to 2 retries)
+- Pillow text designs (slogan type) skip `rembg` since they are already transparent PNG
 
 ## Future Considerations
 

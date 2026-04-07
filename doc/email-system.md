@@ -42,7 +42,15 @@ Uses `aiosmtplib` with STARTTLS for async sending. Email is constructed as `MIME
 
 **File:** `app/agents/agent_email.py`
 
-Shared email utility used by all AI agents (blog writer, design creator, ranking advisor).
+Shared email utility used by all AI agents. Each agent has a name and personality reflected in email styling:
+
+| Agent | Name | Email Color | Greeting |
+|-------|------|-------------|----------|
+| Design Creator | Mango | Purple | "Hey boss, Mango here!" |
+| Blog Writer | Olive | Green | "Olive here -- new post ready!" |
+| Ranking Advisor | Atlas | Blue | "Atlas reporting for duty" |
+| Translation Checker | Hermes | Blue | "Hermes here -- translation run complete" |
+| SEO Optimizer | Sphinx | N/A | Does not send emails |
 
 ### `send_agent_email(subject, html_body, inline_images=None)`
 

@@ -1,4 +1,4 @@
-# Agent 1: SEO Blog Writer
+# Agent 1: SEO Blog Writer (Olive)
 
 ## Purpose
 

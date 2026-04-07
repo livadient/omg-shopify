@@ -1,4 +1,4 @@
-# Agent 2: Trend Research & Design Creator
+# Agent 2: Trend Research & Design Creator (Mango)
 
 ## Purpose
 
@@ -17,20 +17,23 @@ Researches trending t-shirt designs, generates original artwork using AI, and on
 4. Claude returns 5 design concepts with types: cyprus, global-trend, slogan, funny, geeky
 5. For each concept:
    a. Call DALL-E 3 to generate design image
-   b. Post-process: remove background with rembg for print-ready PNG
-   c. Pre-cache TShirtJunkies mockups via Qstomizer Playwright automation
+   b. For designs with text: validate text via Claude vision, retry up to 2x if wrong
+   c. Post-process: remove background with rembg for print-ready PNG
+      (slogan-type Pillow designs skip rembg since already transparent)
+   d. Pre-cache TShirtJunkies mockups via Qstomizer Playwright automation
       (male L + female M) so approval is near-instant
 6. Save proposals to data/proposals.json (status: "pending")
 7. Email user with design thumbnails + Approve/Reject per design
 8. User clicks Approve for chosen designs
 9. For each approved design:
-   a. Use cached mockup images if available (skips Playwright wait)
-   b. Generate product description via LLM
-   c. Create product on OMG Shopify (with Gender+Size variants)
-   d. Upload design as product image
-   e. Upload cached mockup images to product
-   f. Save design PNG to static/ for Playwright automation
-   g. Auto-create mapping in product_mappings.json
+   a. "Approve Original" regenerates mockups from original image
+   b. "Approve nobg" uses pre-cached mockups (from background-removed version)
+   c. Generate product description via LLM
+   d. Create product on OMG Shopify (with Gender+Size variants)
+   e. Upload design as product image
+   f. Upload cached mockup images to product
+   g. Save design PNG to static/ for Playwright automation
+   h. Auto-create mapping in product_mappings.json
 ```
 
 ## Image Generation

@@ -50,17 +50,15 @@ class VariantMapping(BaseModel):
 
 ## Current Mappings
 
-### Male Tee (S-5XL)
+### Astous na Laloun - Limited Edition Tee (unified product)
 
-- **OMG:** `astous-va-laloun-graphic-tee-male-eu-edition` (EUR 30-39.50)
-- **TJ:** `classic-tee-up-to-5xl` (EUR 20-22)
-- Full size coverage: S, M, L, XL, 2XL, 3XL, 4XL, 5XL
+The old separate male/female EU edition products have been replaced by a single unified product with Gender+Size variants:
 
-### Female Tee (S-XL)
+- **OMG:** `astous-na-laloun-limited-edition-tee` (EUR 30-39.50)
+- **TJ (male variants):** `classic-tee-up-to-5xl` (EUR 20-22) -- sizes S-5XL
+- **TJ (female variants):** `women-t-shirt` (EUR 23) -- sizes S-XL
 
-- **OMG:** `astous-va-laloun-graphic-tee-female-eu-edition` (EUR 30)
-- **TJ:** `women-t-shirt` (EUR 23)
-- Full size coverage: S, M, L, XL
+Note: The old `astous-va-laloun-graphic-tee-male-eu-edition` and `astous-va-laloun-graphic-tee-female-eu-edition` mappings have been removed.
 
 ## Variant Matching Logic
 

@@ -95,6 +95,18 @@ Removes the background from an image for print-ready transparent PNG.
 
 **Returns:** `Path` to the background-removed PNG (or original on failure).
 
+### `generate_text_design(concept, style, size, quality)`
+
+Generates a design using DALL-E 3 with transparent RGBA background (instead of white). Used for designs that contain text/slogans. Pillow-based text designs (slogan type) skip `rembg` since they are already transparent.
+
+### `validate_design_text(image_path, expected_text)`
+
+Uses Claude vision to read text in a generated design image and verify it matches the expected text. Returns a validation result indicating whether the text is correct.
+
+### `generate_design_with_text_check(concept, expected_text, style, size, quality)`
+
+End-to-end pipeline: generates a design via DALL-E 3, validates text with Claude vision, and regenerates with a correction prompt if the text is wrong. Retries up to 2 times before returning the best result.
+
 ### Output Directory
 
 All generated images are saved to `static/proposals/` (created automatically).

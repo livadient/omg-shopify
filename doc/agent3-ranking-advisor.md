@@ -1,4 +1,4 @@
-# Agent 3: Google Ranking Advisor
+# Agent 3: Google Ranking Advisor (Atlas)
 
 ## Purpose
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Three AI agents integrate into the existing FastAPI service to automate content creation, product design, and SEO optimization for the OMG t-shirt store.
+Four AI agents (plus an SEO optimizer) integrate into the existing FastAPI service to automate content creation, product design, translations, and SEO optimization for the OMG t-shirt store. Each agent has a name and personality shown in email communications.
 
 **Decision: Build in-app (not Make.com)** — all Shopify API connections already exist, Playwright automation is deeply integrated, and Make.com would add cost ($9-16/month) on top of the same AI API fees (~$15-50/month).
 
@@ -12,11 +12,11 @@ Three AI agents integrate into the existing FastAPI service to automate content 
 ┌─────────────────────────────────────────────────────────────┐
 │                    FastAPI Application                        │
 │                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  Agent 1:     │  │  Agent 2:     │  │  Agent 3:     │      │
-│  │  SEO Blog     │  │  Design       │  │  Ranking      │      │
-│  │  Writer       │  │  Creator      │  │  Advisor      │      │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐│
+│  │ Olive:     │ │ Mango:     │ │ Atlas:     │ │ Hermes:    ││
+│  │ Blog       │ │ Design     │ │ Ranking    │ │ Translation││
+│  │ Writer     │ │ Creator    │ │ Advisor    │ │ Checker    ││
+│  └─────┬──────┘ └─────┬──────┘ └─────┬──────┘ └─────┬──────┘│
 │         │                  │                  │              │
 │  ┌──────────────────────────────────────────────────┐      │
 │  │              SEO Management                       │      │
@@ -70,7 +70,7 @@ Scheduler (cron) ──► Agent generates proposal
               (execute)    (discard)
 ```
 
-Exception: Agent 3 (Ranking Advisor) skips approval — it's advisory only, sending daily email recommendations directly.
+Exceptions: Agent 3 (Atlas / Ranking Advisor) skips approval -- it's advisory only, sending daily email recommendations directly. Agent 4 (Hermes / Translation Checker) also skips approval -- it registers translations immediately and sends a summary report.
 
 ## File Structure
 
@@ -82,12 +82,14 @@ app/
     image_client.py          # OpenAI DALL-E 3 wrapper
     scheduler.py             # APScheduler cron setup
     approval.py              # Proposal storage + token-based approval
-    blog_writer.py           # Agent 1: SEO Blog Writer
-    design_creator.py        # Agent 2: Trend Research & Design
-    ranking_advisor.py       # Agent 3: Google Ranking Advisor
+    blog_writer.py           # Agent "Olive": SEO Blog Writer
+    design_creator.py        # Agent "Mango": Trend Research & Design
+    ranking_advisor.py       # Agent "Atlas": Google Ranking Advisor
+    translation_checker.py   # Agent "Hermes": Translation Checker (EN→GR)
     agent_email.py           # Agent-specific email formatting
   shopify_blog.py            # Shopify Blog Article Admin API
   shopify_product_creator.py # Shopify Product creation Admin API
+  shopify_translations.py    # Shopify GraphQL Translations API
 data/
   proposals.json             # Proposal storage (persisted via Docker volume)
 doc/
@@ -95,6 +97,7 @@ doc/
   agent1-blog-writer.md      # Agent 1 specification
   agent2-design-creator.md   # Agent 2 specification
   agent3-ranking-advisor.md  # Agent 3 specification
+  agent4-translation-checker.md # Agent 4 specification
   setup-guide.md             # Setup and configuration guide
   api-endpoints.md           # New API endpoint reference
 ```
@@ -110,12 +113,13 @@ doc/
 
 ## Data Flow Summary
 
-| Agent | Input | AI Processing | Output | Action on Approval |
-|-------|-------|---------------|--------|-------------------|
-| Blog Writer | Product catalog, existing articles | Claude generates SEO blog post | HTML article + meta | Publish to Shopify blog |
-| Design Creator | Web search trends, market data | Claude ideates + DALL-E 3 renders | Design PNG + cached mockups | Create Shopify product + mapping |
-| Ranking Advisor | Products, articles, market focus | Claude analyzes + recommends | Email report | N/A (advisory) |
-| SEO Management | Product catalog, store metadata | Automated optimization | Fixed handles, meta tags, collections | Immediate (no approval) |
+| Agent (Name) | Input | AI Processing | Output | Action on Approval |
+|--------------|-------|---------------|--------|-------------------|
+| Blog Writer (Olive) | Product catalog, existing articles | Claude generates SEO blog post | HTML article + meta | Publish to Shopify blog |
+| Design Creator (Mango) | Web search trends, market data | Claude ideates + DALL-E 3 renders | Design PNG + cached mockups | Create Shopify product + mapping |
+| Ranking Advisor (Atlas) | Products, articles, market focus | Claude analyzes + recommends | Email report | N/A (advisory) |
+| Translation Checker (Hermes) | Shopify translatable resources | Claude translates EN→GR | Registered translations | Immediate (no approval) |
+| SEO Management (Sphinx) | Product catalog, store metadata | Automated optimization | Fixed handles, meta tags, collections | Immediate (no approval) |
 
 ## SEO Management
 
