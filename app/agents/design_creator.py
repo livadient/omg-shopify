@@ -180,21 +180,31 @@ Be specific in the design description so an AI image generator can create it acc
     proposals = []
     for concept in concepts:
         try:
-            # Slogan/quote designs use Pillow text rendering; others use DALL-E
-            from app.agents.image_client import generate_design, generate_text_design
-            if concept.get("type") == "slogan" and concept.get("text_on_shirt"):
+            # Slogan/quote designs use Pillow text rendering (already transparent);
+            # others use DALL-E with text validation if text_on_shirt is set
+            from app.agents.image_client import (
+                generate_design, generate_text_design,
+                generate_design_with_text_check, remove_background,
+            )
+            is_pillow_text = concept.get("type") == "slogan" and concept.get("text_on_shirt")
+
+            if is_pillow_text:
                 image_path = await generate_text_design(
                     text=concept["text_on_shirt"],
                     style=concept.get("style", "bold modern"),
                 )
             else:
-                image_path = await generate_design(
+                image_path = await generate_design_with_text_check(
                     concept=concept["description"],
+                    intended_text=concept.get("text_on_shirt", ""),
                     style=concept.get("style", "bold graphic illustration"),
                 )
 
-            from app.agents.image_client import remove_background
-            nobg_path = await remove_background(image_path)
+            # Pillow text designs are already transparent — skip rembg
+            if is_pillow_text:
+                nobg_path = image_path
+            else:
+                nobg_path = await remove_background(image_path)
 
             # Store both versions: original and background-removed
             concept["image_path"] = str(image_path)
@@ -313,8 +323,9 @@ async def execute_approval(proposal_id: str, version: str = "original") -> dict:
     )
 
     # Upload images in order: 1) Male mockup, 2) Female mockup, 3) Design artwork
-    # Use pre-cached mockups from design generation if available
-    cached_mockups = data.get("cached_mockups", {})
+    # Use pre-cached mockups only if approving nobg (they were generated from nobg).
+    # For "original" approval, regenerate mockups from the original design.
+    cached_mockups = data.get("cached_mockups", {}) if version == "nobg" else {}
     design_path = str(STATIC_DIR / design_filename)
     for ptype, size, label in [("male", "L", "Male"), ("female", "M", "Female")]:
         cached = cached_mockups.get(ptype, {})
@@ -324,7 +335,7 @@ async def execute_approval(proposal_id: str, version: str = "original") -> dict:
             logger.info(f"Using pre-cached {label} mockup: {cached_path}")
             mockup_path = cached_path
         else:
-            logger.info(f"No cached mockup for {label}, fetching from TShirtJunkies...")
+            logger.info(f"Fetching {label} mockup from TShirtJunkies (version={version})...")
             mockup_url = await fetch_mockup_from_qstomizer(design_path, ptype, size)
             if not mockup_url:
                 continue

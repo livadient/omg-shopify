@@ -89,7 +89,7 @@ async def generate_text_design(
     """
     from PIL import Image, ImageDraw, ImageFont
 
-    img = Image.new("RGB", size, "white")
+    img = Image.new("RGBA", size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
     # Try to load a bold font, fall back to default
@@ -173,6 +173,93 @@ async def generate_text_design(
 
     logger.info(f"Text design saved: {filepath}")
     return filepath
+
+
+async def validate_design_text(image_path: Path, intended_text: str) -> dict:
+    """Use Claude vision to read text in a generated design and check for errors.
+
+    Returns {"valid": True/False, "found_text": "...", "errors": "..."}.
+    """
+    from app.agents import llm_client
+
+    image_data = base64.b64encode(image_path.read_bytes()).decode("utf-8")
+    prompt = (
+        f"Read ALL text visible in this image exactly as it appears, character by character. "
+        f"The intended text was: \"{intended_text}\"\n\n"
+        f"Compare the text in the image with the intended text. "
+        f"Report any spelling mistakes, missing letters, extra letters, or garbled words. "
+        f"Respond in this exact JSON format:\n"
+        f'{{"found_text": "exact text you see in the image", "valid": true/false, "errors": "description of errors or empty string if none"}}'
+    )
+
+    client = llm_client._get_client()
+    response = await client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=500,
+        temperature=0,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": image_data}},
+                {"type": "text", "text": prompt},
+            ],
+        }],
+    )
+
+    import json
+    text = response.content[0].text
+    if "```json" in text:
+        text = text.split("```json")[1].split("```")[0]
+    elif "```" in text:
+        text = text.split("```")[1].split("```")[0]
+    try:
+        result = json.loads(text.strip())
+    except json.JSONDecodeError:
+        logger.warning(f"Failed to parse validation response: {text}")
+        result = {"valid": True, "found_text": "", "errors": ""}
+
+    logger.info(f"Text validation: valid={result.get('valid')}, errors={result.get('errors', '')}")
+    return result
+
+
+async def generate_design_with_text_check(
+    concept: str,
+    intended_text: str,
+    style: str = "bold graphic illustration",
+    size: str = "1024x1024",
+    quality: str = "hd",
+    max_retries: int = 2,
+) -> Path:
+    """Generate a design via DALL-E, validate text with Claude, and regenerate if wrong.
+
+    If intended_text is empty, skips validation and just generates once.
+    """
+    if not intended_text:
+        return await generate_design(concept, style, size, quality)
+
+    for attempt in range(1, max_retries + 1):
+        image_path = await generate_design(concept, style, size, quality)
+        validation = await validate_design_text(image_path, intended_text)
+
+        if validation.get("valid", True):
+            logger.info(f"Text validation passed on attempt {attempt}")
+            return image_path
+
+        logger.warning(
+            f"Text validation failed (attempt {attempt}/{max_retries}): {validation.get('errors', '')}"
+        )
+
+        if attempt < max_retries:
+            # Regenerate with explicit spelling correction in the prompt
+            concept = (
+                f"{concept}. "
+                f"CRITICAL FIX: The previous image had text errors: {validation['errors']}. "
+                f"The text MUST read EXACTLY: \"{intended_text}\" — "
+                f"spell every word correctly, letter by letter."
+            )
+
+    logger.warning(f"Text validation failed after {max_retries} attempts, using last image")
+    return image_path
 
 
 async def remove_background(image_path: Path) -> Path:
