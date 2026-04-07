@@ -57,6 +57,8 @@ async def _graphql(query: str, variables: dict | None = None) -> dict:
 
     if data.get("errors"):
         logger.error(f"GraphQL errors: {data['errors']}")
+    if data.get("data") is None:
+        data["data"] = {}
     return data
 
 
@@ -115,7 +117,7 @@ async def get_translatable_resources(
 ) -> dict:
     """Fetch translatable resources of a given type with their current translations."""
     query = """
-    query($type: TranslatableResourceType!, $first: Int!, $cursor: String) {
+    query($type: TranslatableResourceType!, $first: Int!, $cursor: String, $locale: String!) {
         translatableResources(resourceType: $type, first: $first, after: $cursor) {
             edges {
                 node {
@@ -236,12 +238,18 @@ async def find_untranslated(
                 existing = {t["key"]: t for t in node.get("translations", [])}
 
                 missing_fields = []
+                # Keys that should never be translated (URL slugs, etc.)
+                SKIP_KEYS = {"handle"}
+
                 for field in content:
                     # Skip empty source values
                     if not field.get("value"):
                         continue
                     # Skip non-primary locale content
                     if field.get("locale") and field["locale"] != "en":
+                        continue
+                    # Skip URL handles — they must stay as-is
+                    if field.get("key") in SKIP_KEYS:
                         continue
 
                     trans = existing.get(field["key"])
