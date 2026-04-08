@@ -128,16 +128,27 @@ async def _check_and_fix_impl() -> dict:
     return {"translated": total_registered, "errors": error_count, "details": results}
 
 
+def _get_translation_prompt() -> str:
+    """Get translation system prompt with user preferences injected."""
+    from app.agents.memory import build_memory_prompt
+    mem = build_memory_prompt("hermes")
+    if mem:
+        return TRANSLATION_SYSTEM_PROMPT + "\n" + mem
+    return TRANSLATION_SYSTEM_PROMPT
+
+
 async def _translate_batch(source_texts: dict[str, str]) -> dict[str, str]:
     """Translate a batch of key-value pairs from English to Greek using Claude.
 
     Returns dict of key -> Greek translation.
     """
+    sys_prompt = _get_translation_prompt()
+
     if len(source_texts) == 1:
         # Single field — simple translation
         key, value = next(iter(source_texts.items()))
         greek = await llm_client.generate(
-            system_prompt=TRANSLATION_SYSTEM_PROMPT,
+            system_prompt=sys_prompt,
             user_prompt=f"Translate to Greek:\n\n{value}",
             max_tokens=2000,
             temperature=0.3,
@@ -155,7 +166,7 @@ async def _translate_batch(source_texts: dict[str, str]) -> dict[str, str]:
     )
 
     response = await llm_client.generate(
-        system_prompt=TRANSLATION_SYSTEM_PROMPT,
+        system_prompt=sys_prompt,
         user_prompt=prompt,
         max_tokens=4000,
         temperature=0.3,
@@ -177,7 +188,7 @@ async def _translate_batch(source_texts: dict[str, str]) -> dict[str, str]:
         results = {}
         for key, value in source_texts.items():
             greek = await llm_client.generate(
-                system_prompt=TRANSLATION_SYSTEM_PROMPT,
+                system_prompt=sys_prompt,
                 user_prompt=f"Translate to Greek:\n\n{value}",
                 max_tokens=2000,
                 temperature=0.3,
@@ -236,7 +247,7 @@ async def _send_report_email(results: list[dict], total_registered: int, error_c
             </table>
         </div>
         <div style="padding:12px;text-align:center;color:#9ca3af;font-size:12px;">
-            Your translator, Hermes
+            Your translator, Hermes | <a href="{settings.server_base_url}/agents/feedback/form?agent=hermes" style="color:#9ca3af;">Give Feedback</a>
         </div>
     </div>
     """

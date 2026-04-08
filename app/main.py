@@ -914,6 +914,74 @@ async def ranking_history(limit: int = 30):
     return {"reports": get_history(limit)}
 
 
+@app.get("/agents/feedback/form", response_class=HTMLResponse)
+async def feedback_form(agent: str = ""):
+    """HTML form to submit feedback to any agent."""
+    return HTMLResponse(f"""
+    <html><head><title>Agent Feedback</title></head>
+    <body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;">
+        <h1>Agent Feedback</h1>
+        <p>Tell your agents what to do differently.</p>
+        <form method="POST" action="/agents/feedback">
+            <label><strong>Agent:</strong></label><br>
+            <select name="agent" style="width:100%;padding:8px;margin:8px 0 16px;font-size:16px;">
+                <option value="atlas" {"selected" if agent == "atlas" else ""}>Atlas (Ranking Advisor)</option>
+                <option value="mango" {"selected" if agent == "mango" else ""}>Mango (Design Creator)</option>
+                <option value="olive" {"selected" if agent == "olive" else ""}>Olive (Blog Writer)</option>
+                <option value="hermes" {"selected" if agent == "hermes" else ""}>Hermes (Translation Checker)</option>
+            </select><br>
+            <label><strong>Feedback type:</strong></label><br>
+            <div style="margin:8px 0 16px;">
+                <label><input type="radio" name="type" value="general" checked> General feedback</label><br>
+                <label><input type="radio" name="type" value="preference"> Preference (do more of this)</label><br>
+                <label><input type="radio" name="type" value="blocked"> Block topic (never suggest this)</label>
+            </div>
+            <label><strong>Your feedback:</strong></label><br>
+            <textarea name="note" rows="4" style="width:100%;padding:8px;margin:8px 0 16px;font-size:14px;" placeholder="e.g. Focus more on mobile UX, stop suggesting payment changes..."></textarea><br>
+            <button type="submit" style="padding:12px 32px;background:#2563eb;color:white;border:none;border-radius:6px;font-size:16px;cursor:pointer;">Submit Feedback</button>
+        </form>
+    </body></html>
+    """)
+
+
+@app.post("/agents/feedback", response_class=HTMLResponse)
+async def feedback_submit(request: Request):
+    """Submit feedback for an agent."""
+    form = await request.form()
+    agent = form.get("agent", "")
+    note = form.get("note", "").strip()
+    feedback_type = form.get("type", "general")
+
+    if not agent or not note:
+        return HTMLResponse("<h1>Missing agent or feedback</h1>", status_code=400)
+
+    from app.agents.memory import save_feedback, VALID_AGENTS
+    if agent not in VALID_AGENTS:
+        return HTMLResponse(f"<h1>Unknown agent: {agent}</h1>", status_code=400)
+
+    save_feedback(agent, note, feedback_type)
+
+    agent_names = {"atlas": "Atlas", "mango": "Mango", "olive": "Olive", "hermes": "Hermes"}
+    return HTMLResponse(f"""
+    <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
+        <h1 style="color:#059669;">Feedback Saved!</h1>
+        <p><strong>{agent_names.get(agent, agent)}</strong> will use this in future runs.</p>
+        <p style="color:#6b7280;">Type: {feedback_type}</p>
+        <p style="background:#f9fafb;padding:12px;border-radius:6px;text-align:left;">"{note}"</p>
+        <a href="/agents/feedback/form?agent={agent}" style="color:#2563eb;">Submit more feedback</a>
+    </body></html>
+    """)
+
+
+@app.get("/agents/feedback/{agent}")
+async def feedback_view(agent: str):
+    """View an agent's memory."""
+    from app.agents.memory import load_memory, VALID_AGENTS
+    if agent not in VALID_AGENTS:
+        return {"error": f"Unknown agent: {agent}"}
+    return load_memory(agent)
+
+
 @app.post("/agents/translation/check")
 async def translation_check():
     """Manually trigger Hermes translation check."""

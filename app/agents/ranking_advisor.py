@@ -11,6 +11,7 @@ from app.agents.agent_email import send_agent_email
 from app.agents.google_keyword_planner import fetch_keyword_ideas
 from app.agents.google_search_console import fetch_search_performance
 from app.agents.google_trends import fetch_trending_searches, fetch_related_topics
+from app.agents.memory import build_memory_prompt, build_trends_prompt, save_performance_trend
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -271,6 +272,8 @@ RECENT RECOMMENDATIONS (avoid repeating):
 {recent_recs}
 {_format_keyword_data(keyword_data)}
 {_format_trends_data(trends_data, related_data)}
+{build_trends_prompt(market_code)}
+{build_memory_prompt("atlas")}
 Generate today's ranking recommendations focused on the {market_name} market. Be specific and actionable. Use the real keyword data for your Google Ads suggestions instead of estimating. If there are relevant trending topics, suggest how to capitalize on them (blog posts, ads, social media)."""
 
     # Call Claude
@@ -280,6 +283,10 @@ Generate today's ranking recommendations focused on the {market_name} market. Be
         max_tokens=2048,
         temperature=0.8,
     )
+
+    # Save performance trends for week-over-week tracking
+    if gsc_data and (gsc_data.get("queries") or gsc_data.get("pages")):
+        save_performance_trend(market_code, gsc_data)
 
     # Check active campaign performance
     perf_data = await review_campaign_performance()
@@ -551,7 +558,7 @@ def _build_email_html(report: dict, market_name: str, market_code: str, now: dat
         {build_performance_email_html(perf_data) if perf_data else ''}
 
         <div style="padding:16px;text-align:center;color:#9ca3af;font-size:12px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">
-            Your strategist, Atlas | <a href="{settings.server_base_url}/agents/ranking/history" style="color:#6b7280;">View History</a>
+            Your strategist, Atlas | <a href="{settings.server_base_url}/agents/ranking/history" style="color:#6b7280;">View History</a> | <a href="{settings.server_base_url}/agents/feedback/form?agent=atlas" style="color:#6b7280;">Give Feedback</a>
         </div>
     </div>
     """

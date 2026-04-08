@@ -146,6 +146,8 @@ Summarize the top 10-15 specific trends you find, with concrete examples. Focus 
     logger.info(f"Trend research complete: {len(trend_research)} chars")
 
     # Step 2: Generate design concepts informed by real trends
+    from app.agents.memory import build_memory_prompt
+    _memory_prompt = build_memory_prompt("mango")
     exclusion_prompt = _build_exclusion_prompt()
 
     user_prompt = f"""Today's date: {date_str}
@@ -158,7 +160,8 @@ CURRENT T-SHIRT TRENDS (from real-time research):
 
 Based on these REAL current trends, generate 5 original, commercially viable design concepts (one per type).
 Remember: only concept #1 (cyprus type) should be Cyprus-themed. Concepts #2-#5 must be purely global — no Mediterranean, no Cyprus, no Greece references.
-Be specific in the design description so an AI image generator can create it accurately.{exclusion_prompt}"""
+Be specific in the design description so an AI image generator can create it accurately.{exclusion_prompt}
+{_memory_prompt}"""
 
     # Get design concepts from Claude
     result = await llm_client.generate_json(
@@ -451,7 +454,7 @@ async def _send_design_email(proposals: list[dict]) -> None:
             {designs_html}
         </div>
         <div style="padding:12px;text-align:center;color:#9ca3af;font-size:12px;">
-            Crafted with love by Mango, your resident artist
+            Crafted with love by Mango, your resident artist | <a href="{settings.server_base_url}/agents/feedback/form?agent=mango" style="color:#9ca3af;">Give Feedback</a>
         </div>
     </div>
     """

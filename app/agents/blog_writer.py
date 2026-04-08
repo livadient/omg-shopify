@@ -93,6 +93,8 @@ async def _generate_proposal_impl() -> dict:
     ) or "No existing articles"
 
     from datetime import datetime, timezone
+    from app.agents.memory import build_memory_prompt
+    _memory_prompt = build_memory_prompt("olive")
     now = datetime.now(timezone.utc)
 
     user_prompt = f"""Today's date: {now.strftime('%A, %B %d, %Y')}
@@ -105,7 +107,8 @@ CURRENT PRODUCTS:
 EXISTING BLOG POSTS (do NOT repeat these topics):
 {existing_titles}
 
-Write a new, unique SEO blog post. Choose a fresh angle that complements the existing content."""
+Write a new, unique SEO blog post. Choose a fresh angle that complements the existing content.
+{_memory_prompt}"""
 
     blog_data = await llm_client.generate_json(
         system_prompt=SYSTEM_PROMPT,
@@ -149,7 +152,7 @@ Write a new, unique SEO blog post. Choose a fresh angle that complements the exi
             <a href="{approve}" style="display:inline-block;padding:12px 32px;background:#059669;color:white;text-decoration:none;border-radius:6px;font-weight:bold;margin:0 8px;">Approve & Publish</a>
             <a href="{reject}" style="display:inline-block;padding:12px 32px;background:#dc2626;color:white;text-decoration:none;border-radius:6px;font-weight:bold;margin:0 8px;">Reject</a>
             <br><br>
-            <a href="{preview}" style="color:#2563eb;">View Full Preview</a>
+            <a href="{preview}" style="color:#2563eb;">View Full Preview</a> | <a href="{settings.server_base_url}/agents/feedback/form?agent=olive" style="color:#6b7280;">Give Feedback</a>
         </div>
     </div>
     """
