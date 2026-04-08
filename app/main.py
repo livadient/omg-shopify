@@ -914,6 +914,64 @@ async def ranking_history(limit: int = 30):
     return {"reports": get_history(limit)}
 
 
+@app.post("/agents/ads/propose")
+async def ads_propose(market: str | None = None):
+    """Manually trigger a campaign proposal."""
+    from app.agents.ranking_advisor import propose_campaign
+    proposal = await propose_campaign(market_override=market)
+    return {
+        "status": "proposed",
+        "proposal_id": proposal["id"],
+        "campaign_name": proposal["data"].get("campaign_name", "?"),
+        "message": "Campaign proposal sent via email for approval",
+    }
+
+
+@app.get("/agents/ads/approve/{proposal_id}", response_class=HTMLResponse)
+async def ads_approve(proposal_id: str, token: str = ""):
+    """Approve a campaign proposal — creates it in Google Ads (paused)."""
+    from app.agents.approval import validate_token
+    proposal = validate_token(proposal_id, token)
+    if not proposal:
+        return HTMLResponse(
+            "<h1>Invalid or expired link</h1><p>This proposal may have already been processed.</p>",
+            status_code=403,
+        )
+    from app.agents.ranking_advisor import execute_campaign_approval
+    try:
+        result = await execute_campaign_approval(proposal_id)
+        return HTMLResponse(f"""
+        <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
+            <h1 style="color:#059669;">Campaign Created!</h1>
+            <p><strong>{proposal['data'].get('campaign_name', '?')}</strong></p>
+            <p>Campaign ID: {result.get('campaign_id', '?')}</p>
+            <p>Daily Budget: EUR {result.get('daily_budget_eur', '?')}</p>
+            <p>Keywords: {result.get('keywords_count', '?')}</p>
+            <p style="color:#d97706;font-weight:bold;">Status: PAUSED</p>
+            <p><a href="https://ads.google.com/aw/campaigns?campaignId={result.get('campaign_id', '')}" style="color:#2563eb;">View in Google Ads</a></p>
+            <p style="color:#6b7280;margin-top:16px;">Enable the campaign in Google Ads when you're ready to go live.</p>
+        </body></html>
+        """)
+    except Exception as e:
+        return HTMLResponse(f"<h1>Error creating campaign</h1><p>{e}</p>", status_code=500)
+
+
+@app.get("/agents/ads/reject/{proposal_id}", response_class=HTMLResponse)
+async def ads_reject(proposal_id: str, token: str = ""):
+    """Reject a campaign proposal."""
+    from app.agents.approval import validate_token, update_status
+    proposal = validate_token(proposal_id, token)
+    if not proposal:
+        return HTMLResponse("<h1>Invalid or expired link</h1>", status_code=403)
+    update_status(proposal_id, "rejected")
+    return HTMLResponse("""
+    <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
+        <h1 style="color:#dc2626;">Campaign Rejected</h1>
+        <p>Atlas will propose a new campaign in the next briefing cycle.</p>
+    </body></html>
+    """)
+
+
 @app.get("/shopify-auth", response_class=HTMLResponse)
 async def shopify_auth_start():
     """Redirect to Shopify OAuth to authorize the app."""
