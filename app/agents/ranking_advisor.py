@@ -262,7 +262,7 @@ Generate today's ranking recommendations focused on the {market_name} market. Be
     _save_history(history)
 
     # Send email
-    html = _build_email_html(report, market_name, market_code, now)
+    html = _build_email_html(report, market_name, market_code, now, gsc_data, keyword_data)
     day_name = now.strftime("%a")
     await send_agent_email(
         subject=f"[Atlas] {market_name} briefing — {day_name}, {now.strftime('%b %d')}",
@@ -273,7 +273,91 @@ Generate today's ranking recommendations focused on the {market_name} market. Be
     return report
 
 
-def _build_email_html(report: dict, market_name: str, market_code: str, now: datetime) -> str:
+def _build_gsc_section_html(gsc_data: dict | None) -> str:
+    """Build the Google Search Console data section for the email."""
+    if not gsc_data:
+        return ""
+
+    queries = gsc_data.get("queries", [])[:10]
+    pages = gsc_data.get("pages", [])[:5]
+    if not queries and not pages:
+        return ""
+
+    query_rows = ""
+    for q in queries:
+        pos_color = "#059669" if q["position"] <= 10 else ("#d97706" if q["position"] <= 20 else "#dc2626")
+        query_rows += f"""
+        <tr>
+            <td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:13px;">{q['query']}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;">{q['clicks']}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;">{q['impressions']}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;">{q['ctr']}%</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;color:{pos_color};font-weight:bold;">{q['position']}</td>
+        </tr>"""
+
+    page_rows = ""
+    for p in pages:
+        short_page = p["page"].replace("https://omg.com.cy", "").replace("https://omg.gr", "") or "/"
+        page_rows += f"""
+        <tr>
+            <td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:13px;">{short_page}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;">{p['clicks']}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;">{p['impressions']}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;">{p['ctr']}%</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;font-weight:bold;">{p['position']}</td>
+        </tr>"""
+
+    pages_section = ""
+    if page_rows:
+        pages_section = f"""
+            <h4 style="color:#0891b2;margin:16px 0 8px;">Top Pages</h4>
+            <table style="width:100%;border-collapse:collapse;">
+                <thead><tr style="background:#f3f4f6;">
+                    <th style="padding:4px 8px;text-align:left;font-size:12px;">Page</th>
+                    <th style="padding:4px 8px;text-align:center;font-size:12px;">Clicks</th>
+                    <th style="padding:4px 8px;text-align:center;font-size:12px;">Impr.</th>
+                    <th style="padding:4px 8px;text-align:center;font-size:12px;">CTR</th>
+                    <th style="padding:4px 8px;text-align:center;font-size:12px;">Pos.</th>
+                </tr></thead>
+                <tbody>{page_rows}</tbody>
+            </table>"""
+
+    return f"""
+        <div style="padding:20px;background:#ecfdf5;border:1px solid #a7f3d0;border-top:none;">
+            <h3 style="color:#059669;margin-top:0;">Search Console Data <span style="font-size:11px;font-weight:normal;">(real data — {gsc_data.get('period', '')})</span></h3>
+            <h4 style="color:#059669;margin:0 0 8px;">Top Search Queries</h4>
+            <table style="width:100%;border-collapse:collapse;">
+                <thead><tr style="background:#d1fae5;">
+                    <th style="padding:4px 8px;text-align:left;font-size:12px;">Query</th>
+                    <th style="padding:4px 8px;text-align:center;font-size:12px;">Clicks</th>
+                    <th style="padding:4px 8px;text-align:center;font-size:12px;">Impr.</th>
+                    <th style="padding:4px 8px;text-align:center;font-size:12px;">CTR</th>
+                    <th style="padding:4px 8px;text-align:center;font-size:12px;">Pos.</th>
+                </tr></thead>
+                <tbody>{query_rows}</tbody>
+            </table>
+            {pages_section}
+        </div>"""
+
+
+def _build_email_html(report: dict, market_name: str, market_code: str, now: datetime,
+                      gsc_data: dict | None = None, keyword_data: list[dict] | None = None) -> str:
+    # Data sources banner
+    has_gsc = gsc_data and (gsc_data.get("queries") or gsc_data.get("pages"))
+    has_kw = bool(keyword_data)
+
+    sources = []
+    if has_gsc:
+        sources.append(f'<span style="display:inline-block;padding:3px 10px;background:#059669;color:white;border-radius:12px;font-size:11px;font-weight:bold;margin-right:6px;">GSC: LIVE DATA</span>')
+    else:
+        sources.append(f'<span style="display:inline-block;padding:3px 10px;background:#9ca3af;color:white;border-radius:12px;font-size:11px;font-weight:bold;margin-right:6px;">GSC: NO DATA YET</span>')
+    if has_kw:
+        sources.append(f'<span style="display:inline-block;padding:3px 10px;background:#059669;color:white;border-radius:12px;font-size:11px;font-weight:bold;margin-right:6px;">KEYWORD PLANNER: LIVE DATA</span>')
+    else:
+        sources.append(f'<span style="display:inline-block;padding:3px 10px;background:#9ca3af;color:white;border-radius:12px;font-size:11px;font-weight:bold;margin-right:6px;">KEYWORD PLANNER: AI ESTIMATES</span>')
+
+    data_sources_html = " ".join(sources)
+
     # Top actions
     actions_html = ""
     for i, action in enumerate(report.get("top_actions", []), 1):
@@ -340,6 +424,7 @@ def _build_email_html(report: dict, market_name: str, market_code: str, now: dat
         <div style="background:#1e40af;color:white;padding:20px;border-radius:8px 8px 0 0;">
             <h2 style="margin:0;">Atlas reporting for duty</h2>
             <p style="margin:4px 0 0;opacity:0.9;">Today's intel for {market_name} ({market_code}) — {now.strftime('%A, %B %d, %Y')}</p>
+            <p style="margin:10px 0 0;">{data_sources_html}</p>
         </div>
 
         <div style="padding:20px;background:#f9fafb;border:1px solid #e5e7eb;">
@@ -362,8 +447,10 @@ def _build_email_html(report: dict, market_name: str, market_code: str, now: dat
             <ul style="margin:0;padding-left:20px;">{content_html}</ul>
         </div>
 
+        {_build_gsc_section_html(gsc_data) if has_gsc else ''}
+
         <div style="padding:20px;border:1px solid #e5e7eb;border-top:none;">
-            <h3 style="color:#dc2626;margin-top:0;">Google Ads Suggestions</h3>
+            <h3 style="color:#dc2626;margin-top:0;">Google Ads Suggestions {('<span style="font-size:11px;font-weight:normal;color:#059669;">(Keyword Planner data)</span>' if has_kw else '<span style="font-size:11px;font-weight:normal;color:#9ca3af;">(AI estimates)</span>')}</h3>
             <table style="width:100%;border-collapse:collapse;">
                 <thead>
                     <tr style="background:#f3f4f6;">
