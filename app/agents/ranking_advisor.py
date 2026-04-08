@@ -10,6 +10,7 @@ from app.agents import llm_client
 from app.agents.agent_email import send_agent_email
 from app.agents.google_keyword_planner import fetch_keyword_ideas
 from app.agents.google_search_console import fetch_search_performance
+from app.agents.google_trends import fetch_trending_searches, fetch_related_topics
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,8 @@ You may receive REAL Google Search Console data showing actual search queries, i
 
 You may also receive REAL Google Ads Keyword Planner data with actual monthly search volumes, CPC ranges, and competition levels. When available, use these real numbers in your google_ads recommendations instead of estimating.
 
+You may receive GOOGLE TRENDS data showing trending searches and rising related queries. When available, identify trends relevant to t-shirts/fashion/pop culture and suggest how to capitalize on them — new designs, blog posts, ad campaigns, or social media content that rides the trend wave.
+
 Output your response as JSON with this structure:
 {
   "market_focus": "CY|GR|EU",
@@ -93,6 +96,25 @@ Output your response as JSON with this structure:
   ],
   "weekly_budget_suggestion": "EUR X-Y per day"
 }"""
+
+
+def _format_trends_data(trends: list[str] | None, related: dict | None) -> str:
+    """Format Google Trends data for the prompt."""
+    sections = []
+    if trends:
+        lines = "\n".join(f"- {t}" for t in trends[:15])
+        sections.append(f"TRENDING SEARCHES TODAY:\n{lines}")
+    if related:
+        rising = related.get("rising", [])
+        if rising:
+            lines = "\n".join(
+                f"- \"{r['query']}\" (rising {r['value']}%, from: {r['seed']})"
+                for r in rising[:10]
+            )
+            sections.append(f"RISING RELATED QUERIES (last 3 months):\n{lines}")
+    if not sections:
+        return ""
+    return "\nGOOGLE TRENDS DATA:\n" + "\n\n".join(sections) + "\n"
 
 
 def _format_keyword_data(keyword_data: list[dict] | None) -> str:
@@ -192,6 +214,8 @@ async def _generate_daily_report_impl(market_override: str | None = None) -> dic
     articles = await _fetch_articles()
     gsc_data = fetch_search_performance(market_code)
     keyword_data = fetch_keyword_ideas(market_code)
+    trends_data = fetch_trending_searches(market_code)
+    related_data = fetch_related_topics(market_code)
     history = _load_history()
     recent = history[-5:] if history else []
 
@@ -246,7 +270,8 @@ EXISTING BLOG ARTICLES:
 RECENT RECOMMENDATIONS (avoid repeating):
 {recent_recs}
 {_format_keyword_data(keyword_data)}
-Generate today's ranking recommendations focused on the {market_name} market. Be specific and actionable. Use the real keyword data for your Google Ads suggestions instead of estimating."""
+{_format_trends_data(trends_data, related_data)}
+Generate today's ranking recommendations focused on the {market_name} market. Be specific and actionable. Use the real keyword data for your Google Ads suggestions instead of estimating. If there are relevant trending topics, suggest how to capitalize on them (blog posts, ads, social media)."""
 
     # Call Claude
     report = await llm_client.generate_json(
@@ -267,7 +292,8 @@ Generate today's ranking recommendations focused on the {market_name} market. Be
     _save_history(history)
 
     # Send email
-    html = _build_email_html(report, market_name, market_code, now, gsc_data, keyword_data, perf_data)
+    html = _build_email_html(report, market_name, market_code, now, gsc_data, keyword_data, perf_data,
+                             trends_data, related_data)
     day_name = now.strftime("%a")
     await send_agent_email(
         subject=f"[Atlas] {market_name} briefing — {day_name}, {now.strftime('%b %d')}",
@@ -345,9 +371,55 @@ def _build_gsc_section_html(gsc_data: dict | None) -> str:
         </div>"""
 
 
+def _build_trends_section_html(trends: list[str] | None, related: dict | None) -> str:
+    """Build the Google Trends section for the email."""
+    if not trends and not related:
+        return ""
+
+    trending_html = ""
+    if trends:
+        items = "".join(
+            f'<span style="display:inline-block;padding:3px 10px;background:#ede9fe;color:#5b21b6;'
+            f'border-radius:12px;font-size:12px;margin:3px;">{t}</span>'
+            for t in trends[:12]
+        )
+        trending_html = f"""
+            <h4 style="color:#7c3aed;margin:0 0 8px;">Trending Searches Today</h4>
+            <div style="margin-bottom:12px;">{items}</div>"""
+
+    rising_html = ""
+    if related and related.get("rising"):
+        rows = "".join(
+            f"<tr>"
+            f"<td style='padding:3px 8px;border-bottom:1px solid #e5e7eb;font-size:12px;'>{r['query']}</td>"
+            f"<td style='padding:3px 8px;border-bottom:1px solid #e5e7eb;font-size:12px;text-align:center;color:#059669;font-weight:bold;'>{r['value']}%</td>"
+            f"<td style='padding:3px 8px;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6b7280;'>{r['seed']}</td>"
+            f"</tr>"
+            for r in related["rising"][:8]
+        )
+        rising_html = f"""
+            <h4 style="color:#7c3aed;margin:12px 0 8px;">Rising Related Queries</h4>
+            <table style="width:100%;border-collapse:collapse;">
+                <thead><tr style="background:#ede9fe;">
+                    <th style="padding:3px 8px;text-align:left;font-size:11px;">Query</th>
+                    <th style="padding:3px 8px;text-align:center;font-size:11px;">Growth</th>
+                    <th style="padding:3px 8px;text-align:left;font-size:11px;">Related to</th>
+                </tr></thead>
+                <tbody>{rows}</tbody>
+            </table>"""
+
+    return f"""
+        <div style="padding:20px;background:#f5f3ff;border:1px solid #c4b5fd;border-top:none;">
+            <h3 style="color:#7c3aed;margin-top:0;">Google Trends <span style="font-size:11px;font-weight:normal;">(live data)</span></h3>
+            {trending_html}
+            {rising_html}
+        </div>"""
+
+
 def _build_email_html(report: dict, market_name: str, market_code: str, now: datetime,
                       gsc_data: dict | None = None, keyword_data: list[dict] | None = None,
-                      perf_data: dict | None = None) -> str:
+                      perf_data: dict | None = None,
+                      trends_data: list[str] | None = None, related_data: dict | None = None) -> str:
     # Data sources banner
     has_gsc = gsc_data and (gsc_data.get("queries") or gsc_data.get("pages"))
     has_kw = bool(keyword_data)
@@ -361,6 +433,10 @@ def _build_email_html(report: dict, market_name: str, market_code: str, now: dat
         sources.append(f'<span style="display:inline-block;padding:3px 10px;background:#059669;color:white;border-radius:12px;font-size:11px;font-weight:bold;margin-right:6px;">KEYWORD PLANNER: LIVE DATA</span>')
     else:
         sources.append(f'<span style="display:inline-block;padding:3px 10px;background:#9ca3af;color:white;border-radius:12px;font-size:11px;font-weight:bold;margin-right:6px;">KEYWORD PLANNER: AI ESTIMATES</span>')
+
+    has_trends = bool(trends_data)
+    if has_trends:
+        sources.append(f'<span style="display:inline-block;padding:3px 10px;background:#7c3aed;color:white;border-radius:12px;font-size:11px;font-weight:bold;margin-right:6px;">TRENDS: LIVE</span>')
 
     data_sources_html = " ".join(sources)
 
@@ -454,6 +530,7 @@ def _build_email_html(report: dict, market_name: str, market_code: str, now: dat
         </div>
 
         {_build_gsc_section_html(gsc_data) if has_gsc else ''}
+        {_build_trends_section_html(trends_data, related_data) if has_trends else ''}
 
         <div style="padding:20px;border:1px solid #e5e7eb;border-top:none;">
             <h3 style="color:#dc2626;margin-top:0;">Google Ads Suggestions {('<span style="font-size:11px;font-weight:normal;color:#059669;">(Keyword Planner data)</span>' if has_kw else '<span style="font-size:11px;font-weight:normal;color:#9ca3af;">(AI estimates)</span>')}</h3>
@@ -490,7 +567,7 @@ def get_history(limit: int = 30) -> list[dict]:
 
 CAMPAIGN_PROPOSAL_PROMPT = """You are Atlas, the Google Ads strategist for OMG (omg.com.cy), a Cyprus-based t-shirt store.
 
-Based on the product catalog and keyword data below, propose ONE Google Ads Search campaign.
+Based on the product catalog, keyword data, and Google Trends below, propose ONE Google Ads Search campaign.
 
 RULES:
 - Daily budget MUST be between EUR 3 and EUR 10
@@ -499,6 +576,8 @@ RULES:
 - Write 5 ad headlines (max 30 characters each) and 3 descriptions (max 90 characters each)
 - The final_url should be a specific product or collection page, not the homepage
 - Focus on the given market
+- If Google Trends shows relevant trending topics, incorporate them into keywords and ad copy
+- Prefer keywords that match current trends — ride the wave of what people are searching for NOW
 
 Output JSON:
 {
@@ -514,6 +593,19 @@ Output JSON:
   "ad_descriptions": ["Description 1", "Description 2", ...],
   "reasoning": "Why this campaign and these keywords"
 }"""
+
+
+async def propose_all_campaigns() -> list[dict]:
+    """Propose campaigns for all 3 markets (CY, GR, EU). Scheduled weekly."""
+    results = []
+    for market in ("CY", "GR", "EU"):
+        try:
+            proposal = await propose_campaign(market_override=market)
+            results.append({"market": market, "proposal_id": proposal["id"], "status": "proposed"})
+        except Exception as e:
+            logger.error(f"Campaign proposal for {market} failed: {e}")
+            results.append({"market": market, "status": "failed", "error": str(e)})
+    return results
 
 
 async def propose_campaign(market_override: str | None = None) -> dict:
@@ -541,6 +633,8 @@ async def _propose_campaign_impl(market_override: str | None = None) -> dict:
 
     products = await _fetch_products()
     keyword_data = fetch_keyword_ideas(market_code)
+    trends_data = fetch_trending_searches(market_code)
+    related_data = fetch_related_topics(market_code)
 
     product_summary = "\n".join(
         f"- {p['title']} (handle: {p['handle']}, price: {p['variants'][0]['price']} EUR, "
@@ -549,6 +643,7 @@ async def _propose_campaign_impl(market_override: str | None = None) -> dict:
     ) or "No products found"
 
     kw_section = _format_keyword_data(keyword_data)
+    trends_section = _format_trends_data(trends_data, related_data)
 
     user_prompt = f"""Market: {market_name} ({market_code})
 Store: https://omg.com.cy
@@ -556,7 +651,8 @@ Store: https://omg.com.cy
 PRODUCTS:
 {product_summary}
 {kw_section}
-Propose a campaign for the {market_name} market."""
+{trends_section}
+Propose a campaign for the {market_name} market. Incorporate relevant trends if any."""
 
     proposal_data = await llm_client.generate_json(
         system_prompt=CAMPAIGN_PROPOSAL_PROMPT,

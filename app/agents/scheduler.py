@@ -45,6 +45,16 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Atlas Campaign Proposals — weekly Monday at 08:00 (all 3 markets)
+    from app.agents.ranking_advisor import propose_all_campaigns
+    scheduler.add_job(
+        propose_all_campaigns,
+        CronTrigger(day_of_week="mon", hour=8, minute=0, timezone=tz),
+        id="campaign_proposals",
+        name="Atlas Campaign Proposals (CY/GR/EU)",
+        replace_existing=True,
+    )
+
     # SEO optimization (Sphinx) — DISABLED: manually executing Atlas' recommendations instead
     # from app.seo_management import run_all as seo_run_all
     # scheduler.add_job(

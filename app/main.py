@@ -916,15 +916,24 @@ async def ranking_history(limit: int = 30):
 
 @app.post("/agents/ads/propose")
 async def ads_propose(market: str | None = None):
-    """Manually trigger a campaign proposal."""
-    from app.agents.ranking_advisor import propose_campaign
-    proposal = await propose_campaign(market_override=market)
-    return {
-        "status": "proposed",
-        "proposal_id": proposal["id"],
-        "campaign_name": proposal["data"].get("campaign_name", "?"),
-        "message": "Campaign proposal sent via email for approval",
-    }
+    """Manually trigger campaign proposal(s). No market = all 3 markets."""
+    if market:
+        from app.agents.ranking_advisor import propose_campaign
+        proposal = await propose_campaign(market_override=market)
+        return {
+            "status": "proposed",
+            "proposal_id": proposal["id"],
+            "campaign_name": proposal["data"].get("campaign_name", "?"),
+            "message": "Campaign proposal sent via email for approval",
+        }
+    else:
+        from app.agents.ranking_advisor import propose_all_campaigns
+        results = await propose_all_campaigns()
+        return {
+            "status": "proposed",
+            "proposals": results,
+            "message": "Campaign proposals for CY, GR, EU sent via email",
+        }
 
 
 @app.get("/agents/ads/approve/{proposal_id}", response_class=HTMLResponse)
