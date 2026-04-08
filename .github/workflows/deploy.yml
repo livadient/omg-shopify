@@ -17,5 +17,8 @@ jobs:
           command_timeout: 30m
           script: |
             cd ~/omg-shopify
+            # Protect server-authoritative files from git pull
+            [ -f product_mappings.json ] && cp product_mappings.json product_mappings.json.bak
             git pull origin main
+            [ -f product_mappings.json.bak ] && cp product_mappings.json.bak product_mappings.json && rm product_mappings.json.bak
             docker compose up -d --build
