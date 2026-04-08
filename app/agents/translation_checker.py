@@ -201,6 +201,21 @@ async def _translate_batch(source_texts: dict[str, str]) -> dict[str, str]:
 async def _send_report_email(results: list[dict], total_registered: int, error_count: int) -> None:
     """Send email report of translation activity."""
     if not results:
+        html = f"""
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
+        <div style="background:#2563eb;color:white;padding:20px;border-radius:8px 8px 0 0;">
+            <h2 style="margin:0;">Hermes here — all up to date!</h2>
+            <p style="margin:4px 0 0;opacity:0.9;">Checked all products, collections, and pages. Nothing to translate tonight.</p>
+        </div>
+        <div style="padding:12px;text-align:center;color:#9ca3af;font-size:12px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">
+            Your translator, Hermes | <a href="{settings.server_base_url}/agents/feedback/form?agent=hermes" style="color:#9ca3af;">Give Feedback</a>
+        </div>
+    </div>
+        """
+        await send_agent_email(
+            subject="[Hermes] All translations up to date",
+            html_body=html,
+        )
         return
 
     rows_html = ""
