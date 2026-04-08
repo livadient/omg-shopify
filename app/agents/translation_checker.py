@@ -3,6 +3,7 @@ import logging
 
 from app.agents import llm_client
 from app.agents.agent_email import send_agent_email
+from app.config import settings
 from app.shopify_translations import (
     ensure_locale_enabled,
     find_untranslated,
