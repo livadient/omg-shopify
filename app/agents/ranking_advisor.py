@@ -39,6 +39,7 @@ DO NOT recommend any of the following — these require manual Shopify admin/the
 - Adding or changing payment methods (JCC cards, PayPal badges, etc.)
 - Payment gateway configuration or checkout payment options
 - Checkout customizations (address autocomplete, Google Places API, postal code validation, custom checkout scripts)
+- Theme Liquid file changes (schema markup, hreflang tags, structured data injection)
 
 Output your response as JSON with this structure:
 {

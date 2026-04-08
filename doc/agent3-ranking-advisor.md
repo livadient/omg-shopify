@@ -41,6 +41,7 @@ Atlas's system prompt includes a permanent exclusion list of topics it must **ne
 - Adding or changing payment methods (JCC cards, PayPal badges, etc.)
 - Payment gateway configuration or checkout payment options
 - Checkout customizations (address autocomplete, Google Places API, postal code validation, custom checkout scripts)
+- Theme Liquid file changes (schema markup, hreflang tags, structured data injection)
 
 To add more exclusions, edit the `SYSTEM_PROMPT` in `app/agents/ranking_advisor.py`.
 

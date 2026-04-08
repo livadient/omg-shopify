@@ -1,770 +1,770 @@
-{
-  "mappings": [
-    {
-      "source_handle": "digital-detox-spring-tee",
-      "source_title": "Digital Detox Spring Tee",
-      "target_handle": "women-t-shirt",
-      "target_title": "Women T-shirt",
-      "target_product_id": 8676301799771,
-      "variants": [
-        {
-          "source_variant_id": 56598583640444,
-          "source_title": "S",
-          "target_variant_id": 47361096253787,
-          "target_title": "S",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56598583673212,
-          "source_title": "M",
-          "target_variant_id": 47361096286555,
-          "target_title": "M",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56598583705980,
-          "source_title": "L",
-          "target_variant_id": 47361096319323,
-          "target_title": "L",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56598583738748,
-          "source_title": "XL",
-          "target_variant_id": 47361096352091,
-          "target_title": "XL",
-          "target_price": "18.95"
-        }
-      ],
-      "design_image": "design_digital-detox-spring-tee.png"
-    },
-    {
-      "source_handle": "digital-detox-mediterranean-escape-tee",
-      "source_title": "Digital Detox Mediterranean Escape Tee",
-      "target_handle": "classic-tee-up-to-5xl",
-      "target_title": "Classic Tee Up To 5XL",
-      "target_product_id": 9864408301915,
-      "variants": [
-        {
-          "source_variant_id": 56598585049468,
-          "source_title": "Male / S",
-          "target_variant_id": 50461540614491,
-          "target_title": "S",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56598585082236,
-          "source_title": "Male / M",
-          "target_variant_id": 50461540647259,
-          "target_title": "M",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56598585115004,
-          "source_title": "Male / L",
-          "target_variant_id": 50461540680027,
-          "target_title": "L",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56598585147772,
-          "source_title": "Male / XL",
-          "target_variant_id": 50461540712795,
-          "target_title": "XL",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56598585180540,
-          "source_title": "Male / 2XL",
-          "target_variant_id": 50461540745563,
-          "target_title": "2XL",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56598585213308,
-          "source_title": "Male / 3XL",
-          "target_variant_id": 50461540778331,
-          "target_title": "3XL",
-          "target_price": "19.95"
-        },
-        {
-          "source_variant_id": 56598585246076,
-          "source_title": "Male / 4XL",
-          "target_variant_id": 50461542056283,
-          "target_title": "4XL",
-          "target_price": "19.95"
-        },
-        {
-          "source_variant_id": 56598585278844,
-          "source_title": "Male / 5XL",
-          "target_variant_id": 50461542089051,
-          "target_title": "5XL",
-          "target_price": "19.95"
-        }
-      ],
-      "design_image": "design_digital-detox-mediterranean-escape-tee.png"
-    },
-    {
-      "source_handle": "digital-detox-mediterranean-escape-tee",
-      "source_title": "Digital Detox Mediterranean Escape Tee",
-      "target_handle": "women-t-shirt",
-      "target_title": "Women T-shirt",
-      "target_product_id": 8676301799771,
-      "variants": [
-        {
-          "source_variant_id": 56598585311612,
-          "source_title": "Female / S",
-          "target_variant_id": 47361096253787,
-          "target_title": "S",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56598585344380,
-          "source_title": "Female / M",
-          "target_variant_id": 47361096286555,
-          "target_title": "M",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56598585377148,
-          "source_title": "Female / L",
-          "target_variant_id": 47361096319323,
-          "target_title": "L",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56598585409916,
-          "source_title": "Female / XL",
-          "target_variant_id": 47361096352091,
-          "target_title": "XL",
-          "target_price": "18.95"
-        }
-      ],
-      "design_image": "design_digital-detox-mediterranean-escape-tee.png"
-    },
-    {
-      "source_handle": "404-sleep-not-found-programmer-humor-tee",
-      "source_title": "404 Sleep Not Found - Programmer Humor Tee",
-      "target_handle": "classic-tee-up-to-5xl",
-      "target_title": "Classic Tee Up To 5XL",
-      "target_product_id": 9864408301915,
-      "variants": [
-        {
-          "source_variant_id": 56599059759484,
-          "source_title": "Male / S",
-          "target_variant_id": 50461540614491,
-          "target_title": "S",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56599059792252,
-          "source_title": "Male / M",
-          "target_variant_id": 50461540647259,
-          "target_title": "M",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56599059825020,
-          "source_title": "Male / L",
-          "target_variant_id": 50461540680027,
-          "target_title": "L",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56599059857788,
-          "source_title": "Male / XL",
-          "target_variant_id": 50461540712795,
-          "target_title": "XL",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56599059890556,
-          "source_title": "Male / 2XL",
-          "target_variant_id": 50461540745563,
-          "target_title": "2XL",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56599059923324,
-          "source_title": "Male / 3XL",
-          "target_variant_id": 50461540778331,
-          "target_title": "3XL",
-          "target_price": "19.95"
-        },
-        {
-          "source_variant_id": 56599059956092,
-          "source_title": "Male / 4XL",
-          "target_variant_id": 50461542056283,
-          "target_title": "4XL",
-          "target_price": "19.95"
-        },
-        {
-          "source_variant_id": 56599059988860,
-          "source_title": "Male / 5XL",
-          "target_variant_id": 50461542089051,
-          "target_title": "5XL",
-          "target_price": "19.95"
-        }
-      ],
-      "design_image": "design_404-sleep-not-found-programmer-humor-tee.png"
-    },
-    {
-      "source_handle": "404-sleep-not-found-programmer-humor-tee",
-      "source_title": "404 Sleep Not Found - Programmer Humor Tee",
-      "target_handle": "women-t-shirt",
-      "target_title": "Women T-shirt",
-      "target_product_id": 8676301799771,
-      "variants": [
-        {
-          "source_variant_id": 56599060021628,
-          "source_title": "Female / S",
-          "target_variant_id": 47361096253787,
-          "target_title": "S",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56599060054396,
-          "source_title": "Female / M",
-          "target_variant_id": 47361096286555,
-          "target_title": "M",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56599060087164,
-          "source_title": "Female / L",
-          "target_variant_id": 47361096319323,
-          "target_title": "L",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56599060119932,
-          "source_title": "Female / XL",
-          "target_variant_id": 47361096352091,
-          "target_title": "XL",
-          "target_price": "18.95"
-        }
-      ],
-      "design_image": "design_404-sleep-not-found-programmer-humor-tee.png"
-    },
-    {
-      "source_handle": "main-character-energy-empowerment-slogan-tee",
-      "source_title": "Main Character Energy - Empowerment Slogan Tee",
-      "target_handle": "classic-tee-up-to-5xl",
-      "target_title": "Classic Tee Up To 5XL",
-      "target_product_id": 9864408301915,
-      "variants": [
-        {
-          "source_variant_id": 56599070540156,
-          "source_title": "Male / S",
-          "target_variant_id": 50461540614491,
-          "target_title": "S",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56599070572924,
-          "source_title": "Male / M",
-          "target_variant_id": 50461540647259,
-          "target_title": "M",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56599070605692,
-          "source_title": "Male / L",
-          "target_variant_id": 50461540680027,
-          "target_title": "L",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56599070638460,
-          "source_title": "Male / XL",
-          "target_variant_id": 50461540712795,
-          "target_title": "XL",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56599070671228,
-          "source_title": "Male / 2XL",
-          "target_variant_id": 50461540745563,
-          "target_title": "2XL",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56599070703996,
-          "source_title": "Male / 3XL",
-          "target_variant_id": 50461540778331,
-          "target_title": "3XL",
-          "target_price": "19.95"
-        },
-        {
-          "source_variant_id": 56599070736764,
-          "source_title": "Male / 4XL",
-          "target_variant_id": 50461542056283,
-          "target_title": "4XL",
-          "target_price": "19.95"
-        },
-        {
-          "source_variant_id": 56599070769532,
-          "source_title": "Male / 5XL",
-          "target_variant_id": 50461542089051,
-          "target_title": "5XL",
-          "target_price": "19.95"
-        }
-      ],
-      "design_image": "design_main-character-energy-empowerment-slogan-tee.png"
-    },
-    {
-      "source_handle": "main-character-energy-empowerment-slogan-tee",
-      "source_title": "Main Character Energy - Empowerment Slogan Tee",
-      "target_handle": "women-t-shirt",
-      "target_title": "Women T-shirt",
-      "target_product_id": 8676301799771,
-      "variants": [
-        {
-          "source_variant_id": 56599070802300,
-          "source_title": "Female / S",
-          "target_variant_id": 47361096253787,
-          "target_title": "S",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56599070835068,
-          "source_title": "Female / M",
-          "target_variant_id": 47361096286555,
-          "target_title": "M",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56599070867836,
-          "source_title": "Female / L",
-          "target_variant_id": 47361096319323,
-          "target_title": "L",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56599070900604,
-          "source_title": "Female / XL",
-          "target_variant_id": 47361096352091,
-          "target_title": "XL",
-          "target_price": "18.95"
-        }
-      ],
-      "design_image": "design_main-character-energy-empowerment-slogan-tee.png"
-    },
-    {
-      "source_handle": "nihilistic-penguin-walk-mood-tee",
-      "source_title": "Nihilistic Penguin Walk - Mood Tee",
-      "target_handle": "classic-tee-up-to-5xl",
-      "target_title": "Classic Tee Up To 5XL",
-      "target_product_id": 9864408301915,
-      "variants": [
-        {
-          "source_variant_id": 56599055565180,
-          "source_title": "Male / S",
-          "target_variant_id": 50461540614491,
-          "target_title": "S",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56599055597948,
-          "source_title": "Male / M",
-          "target_variant_id": 50461540647259,
-          "target_title": "M",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56599055630716,
-          "source_title": "Male / L",
-          "target_variant_id": 50461540680027,
-          "target_title": "L",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56599055663484,
-          "source_title": "Male / XL",
-          "target_variant_id": 50461540712795,
-          "target_title": "XL",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56599055696252,
-          "source_title": "Male / 2XL",
-          "target_variant_id": 50461540745563,
-          "target_title": "2XL",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56599055729020,
-          "source_title": "Male / 3XL",
-          "target_variant_id": 50461540778331,
-          "target_title": "3XL",
-          "target_price": "19.95"
-        },
-        {
-          "source_variant_id": 56599055761788,
-          "source_title": "Male / 4XL",
-          "target_variant_id": 50461542056283,
-          "target_title": "4XL",
-          "target_price": "19.95"
-        },
-        {
-          "source_variant_id": 56599055794556,
-          "source_title": "Male / 5XL",
-          "target_variant_id": 50461542089051,
-          "target_title": "5XL",
-          "target_price": "19.95"
-        }
-      ],
-      "design_image": "design_nihilistic-penguin-walk-mood-tee.png"
-    },
-    {
-      "source_handle": "nihilistic-penguin-walk-mood-tee",
-      "source_title": "Nihilistic Penguin Walk - Mood Tee",
-      "target_handle": "women-t-shirt",
-      "target_title": "Women T-shirt",
-      "target_product_id": 8676301799771,
-      "variants": [
-        {
-          "source_variant_id": 56599055827324,
-          "source_title": "Female / S",
-          "target_variant_id": 47361096253787,
-          "target_title": "S",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56599055860092,
-          "source_title": "Female / M",
-          "target_variant_id": 47361096286555,
-          "target_title": "M",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56599055892860,
-          "source_title": "Female / L",
-          "target_variant_id": 47361096319323,
-          "target_title": "L",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56599055925628,
-          "source_title": "Female / XL",
-          "target_variant_id": 47361096352091,
-          "target_title": "XL",
-          "target_price": "18.95"
-        }
-      ],
-      "design_image": "design_nihilistic-penguin-walk-mood-tee.png"
-    },
-    {
-      "source_handle": "no-cap-energy-only-bold-typography-t-shirt",
-      "source_title": "No Cap Energy Only Bold Typography T-Shirt",
-      "target_handle": "classic-tee-up-to-5xl",
-      "target_title": "Classic Tee Up To 5XL",
-      "target_product_id": 9864408301915,
-      "variants": [
-        {
-          "source_variant_id": 56600784339324,
-          "source_title": "Male / S",
-          "target_variant_id": 50461540614491,
-          "target_title": "S",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56600784372092,
-          "source_title": "Male / M",
-          "target_variant_id": 50461540647259,
-          "target_title": "M",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56600784404860,
-          "source_title": "Male / L",
-          "target_variant_id": 50461540680027,
-          "target_title": "L",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56600784437628,
-          "source_title": "Male / XL",
-          "target_variant_id": 50461540712795,
-          "target_title": "XL",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56600784470396,
-          "source_title": "Male / 2XL",
-          "target_variant_id": 50461540745563,
-          "target_title": "2XL",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56600784503164,
-          "source_title": "Male / 3XL",
-          "target_variant_id": 50461540778331,
-          "target_title": "3XL",
-          "target_price": "19.95"
-        },
-        {
-          "source_variant_id": 56600784535932,
-          "source_title": "Male / 4XL",
-          "target_variant_id": 50461542056283,
-          "target_title": "4XL",
-          "target_price": "19.95"
-        },
-        {
-          "source_variant_id": 56600784568700,
-          "source_title": "Male / 5XL",
-          "target_variant_id": 50461542089051,
-          "target_title": "5XL",
-          "target_price": "19.95"
-        }
-      ],
-      "design_image": "design_no-cap-energy-only-bold-typography-t-shirt.png"
-    },
-    {
-      "source_handle": "no-cap-energy-only-bold-typography-t-shirt",
-      "source_title": "No Cap Energy Only Bold Typography T-Shirt",
-      "target_handle": "women-t-shirt",
-      "target_title": "Women T-shirt",
-      "target_product_id": 8676301799771,
-      "variants": [
-        {
-          "source_variant_id": 56600784601468,
-          "source_title": "Female / S",
-          "target_variant_id": 47361096253787,
-          "target_title": "S",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56600784634236,
-          "source_title": "Female / M",
-          "target_variant_id": 47361096286555,
-          "target_title": "M",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56600784667004,
-          "source_title": "Female / L",
-          "target_variant_id": 47361096319323,
-          "target_title": "L",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56600784699772,
-          "source_title": "Female / XL",
-          "target_variant_id": 47361096352091,
-          "target_title": "XL",
-          "target_price": "18.95"
-        }
-      ],
-      "design_image": "design_no-cap-energy-only-bold-typography-t-shirt.png"
-    },
-    {
-      "source_handle": "astous-na-laloun-limited-edition-tee",
-      "source_title": "Astous na Laloun - Limited Edition Tee",
-      "target_handle": "classic-tee-up-to-5xl",
-      "target_title": "Classic Tee Up To 5XL",
-      "target_product_id": 9864408301915,
-      "variants": [
-        {
-          "source_variant_id": 56600794136956,
-          "source_title": "Male / S",
-          "target_variant_id": 50461540614491,
-          "target_title": "S",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56600794169724,
-          "source_title": "Male / M",
-          "target_variant_id": 50461540647259,
-          "target_title": "M",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56600794202492,
-          "source_title": "Male / L",
-          "target_variant_id": 50461540680027,
-          "target_title": "L",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56600794235260,
-          "source_title": "Male / XL",
-          "target_variant_id": 50461540712795,
-          "target_title": "XL",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56600794268028,
-          "source_title": "Male / 2XL",
-          "target_variant_id": 50461540745563,
-          "target_title": "2XL",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56600794300796,
-          "source_title": "Male / 3XL",
-          "target_variant_id": 50461540778331,
-          "target_title": "3XL",
-          "target_price": "19.95"
-        },
-        {
-          "source_variant_id": 56600794333564,
-          "source_title": "Male / 4XL",
-          "target_variant_id": 50461542056283,
-          "target_title": "4XL",
-          "target_price": "19.95"
-        },
-        {
-          "source_variant_id": 56600794366332,
-          "source_title": "Male / 5XL",
-          "target_variant_id": 50461542089051,
-          "target_title": "5XL",
-          "target_price": "19.95"
-        }
-      ],
-      "design_image": "front_design.png"
-    },
-    {
-      "source_handle": "astous-na-laloun-limited-edition-tee",
-      "source_title": "Astous na Laloun - Limited Edition Tee",
-      "target_handle": "women-t-shirt",
-      "target_title": "Women T-shirt",
-      "target_product_id": 8676301799771,
-      "variants": [
-        {
-          "source_variant_id": 56600794399100,
-          "source_title": "Female / S",
-          "target_variant_id": 47361096253787,
-          "target_title": "S",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56600794431868,
-          "source_title": "Female / M",
-          "target_variant_id": 47361096286555,
-          "target_title": "M",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56600794464636,
-          "source_title": "Female / L",
-          "target_variant_id": 47361096319323,
-          "target_title": "L",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56600794497404,
-          "source_title": "Female / XL",
-          "target_variant_id": 47361096352091,
-          "target_title": "XL",
-          "target_price": "18.95"
-        }
-      ],
-      "design_image": "front_design.png"
-    },
-    {
-      "source_handle": "professional-overthinker-bold-typography-tee",
-      "source_title": "Professional Overthinker — Bold Typography Tee",
-      "target_handle": "classic-tee-up-to-5xl",
-      "target_title": "Classic Tee Up To 5XL",
-      "target_product_id": 9864408301915,
-      "variants": [
-        {
-          "source_variant_id": 56606195908988,
-          "source_title": "Male / S",
-          "target_variant_id": 50461540614491,
-          "target_title": "S",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56606195941756,
-          "source_title": "Male / M",
-          "target_variant_id": 50461540647259,
-          "target_title": "M",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56606195974524,
-          "source_title": "Male / L",
-          "target_variant_id": 50461540680027,
-          "target_title": "L",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56606196007292,
-          "source_title": "Male / XL",
-          "target_variant_id": 50461540712795,
-          "target_title": "XL",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56606196040060,
-          "source_title": "Male / 2XL",
-          "target_variant_id": 50461540745563,
-          "target_title": "2XL",
-          "target_price": "15.95"
-        },
-        {
-          "source_variant_id": 56606196072828,
-          "source_title": "Male / 3XL",
-          "target_variant_id": 50461540778331,
-          "target_title": "3XL",
-          "target_price": "19.95"
-        },
-        {
-          "source_variant_id": 56606196105596,
-          "source_title": "Male / 4XL",
-          "target_variant_id": 50461542056283,
-          "target_title": "4XL",
-          "target_price": "19.95"
-        },
-        {
-          "source_variant_id": 56606196138364,
-          "source_title": "Male / 5XL",
-          "target_variant_id": 50461542089051,
-          "target_title": "5XL",
-          "target_price": "19.95"
-        }
-      ],
-      "design_image": "design_professional-overthinker-bold-typography-tee.png"
-    },
-    {
-      "source_handle": "professional-overthinker-bold-typography-tee",
-      "source_title": "Professional Overthinker — Bold Typography Tee",
-      "target_handle": "women-t-shirt",
-      "target_title": "Women T-shirt",
-      "target_product_id": 8676301799771,
-      "variants": [
-        {
-          "source_variant_id": 56606196171132,
-          "source_title": "Female / S",
-          "target_variant_id": 47361096253787,
-          "target_title": "S",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56606196203900,
-          "source_title": "Female / M",
-          "target_variant_id": 47361096286555,
-          "target_title": "M",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56606196236668,
-          "source_title": "Female / L",
-          "target_variant_id": 47361096319323,
-          "target_title": "L",
-          "target_price": "18.95"
-        },
-        {
-          "source_variant_id": 56606196269436,
-          "source_title": "Female / XL",
-          "target_variant_id": 47361096352091,
-          "target_title": "XL",
-          "target_price": "18.95"
-        }
-      ],
-      "design_image": "design_professional-overthinker-bold-typography-tee.png"
-    }
-  ]
+{
+  "mappings": [
+    {
+      "source_handle": "digital-detox-spring-tee",
+      "source_title": "Digital Detox Spring Tee",
+      "target_handle": "women-t-shirt",
+      "target_title": "Women T-shirt",
+      "target_product_id": 8676301799771,
+      "variants": [
+        {
+          "source_variant_id": 56598583640444,
+          "source_title": "S",
+          "target_variant_id": 47361096253787,
+          "target_title": "S",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56598583673212,
+          "source_title": "M",
+          "target_variant_id": 47361096286555,
+          "target_title": "M",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56598583705980,
+          "source_title": "L",
+          "target_variant_id": 47361096319323,
+          "target_title": "L",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56598583738748,
+          "source_title": "XL",
+          "target_variant_id": 47361096352091,
+          "target_title": "XL",
+          "target_price": "18.95"
+        }
+      ],
+      "design_image": "design_digital-detox-spring-tee.png"
+    },
+    {
+      "source_handle": "digital-detox-mediterranean-escape-tee",
+      "source_title": "Digital Detox Mediterranean Escape Tee",
+      "target_handle": "classic-tee-up-to-5xl",
+      "target_title": "Classic Tee Up To 5XL",
+      "target_product_id": 9864408301915,
+      "variants": [
+        {
+          "source_variant_id": 56598585049468,
+          "source_title": "Male / S",
+          "target_variant_id": 50461540614491,
+          "target_title": "S",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56598585082236,
+          "source_title": "Male / M",
+          "target_variant_id": 50461540647259,
+          "target_title": "M",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56598585115004,
+          "source_title": "Male / L",
+          "target_variant_id": 50461540680027,
+          "target_title": "L",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56598585147772,
+          "source_title": "Male / XL",
+          "target_variant_id": 50461540712795,
+          "target_title": "XL",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56598585180540,
+          "source_title": "Male / 2XL",
+          "target_variant_id": 50461540745563,
+          "target_title": "2XL",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56598585213308,
+          "source_title": "Male / 3XL",
+          "target_variant_id": 50461540778331,
+          "target_title": "3XL",
+          "target_price": "19.95"
+        },
+        {
+          "source_variant_id": 56598585246076,
+          "source_title": "Male / 4XL",
+          "target_variant_id": 50461542056283,
+          "target_title": "4XL",
+          "target_price": "19.95"
+        },
+        {
+          "source_variant_id": 56598585278844,
+          "source_title": "Male / 5XL",
+          "target_variant_id": 50461542089051,
+          "target_title": "5XL",
+          "target_price": "19.95"
+        }
+      ],
+      "design_image": "design_digital-detox-mediterranean-escape-tee.png"
+    },
+    {
+      "source_handle": "digital-detox-mediterranean-escape-tee",
+      "source_title": "Digital Detox Mediterranean Escape Tee",
+      "target_handle": "women-t-shirt",
+      "target_title": "Women T-shirt",
+      "target_product_id": 8676301799771,
+      "variants": [
+        {
+          "source_variant_id": 56598585311612,
+          "source_title": "Female / S",
+          "target_variant_id": 47361096253787,
+          "target_title": "S",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56598585344380,
+          "source_title": "Female / M",
+          "target_variant_id": 47361096286555,
+          "target_title": "M",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56598585377148,
+          "source_title": "Female / L",
+          "target_variant_id": 47361096319323,
+          "target_title": "L",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56598585409916,
+          "source_title": "Female / XL",
+          "target_variant_id": 47361096352091,
+          "target_title": "XL",
+          "target_price": "18.95"
+        }
+      ],
+      "design_image": "design_digital-detox-mediterranean-escape-tee.png"
+    },
+    {
+      "source_handle": "404-sleep-not-found-programmer-humor-tee",
+      "source_title": "404 Sleep Not Found - Programmer Humor Tee",
+      "target_handle": "classic-tee-up-to-5xl",
+      "target_title": "Classic Tee Up To 5XL",
+      "target_product_id": 9864408301915,
+      "variants": [
+        {
+          "source_variant_id": 56599059759484,
+          "source_title": "Male / S",
+          "target_variant_id": 50461540614491,
+          "target_title": "S",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56599059792252,
+          "source_title": "Male / M",
+          "target_variant_id": 50461540647259,
+          "target_title": "M",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56599059825020,
+          "source_title": "Male / L",
+          "target_variant_id": 50461540680027,
+          "target_title": "L",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56599059857788,
+          "source_title": "Male / XL",
+          "target_variant_id": 50461540712795,
+          "target_title": "XL",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56599059890556,
+          "source_title": "Male / 2XL",
+          "target_variant_id": 50461540745563,
+          "target_title": "2XL",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56599059923324,
+          "source_title": "Male / 3XL",
+          "target_variant_id": 50461540778331,
+          "target_title": "3XL",
+          "target_price": "19.95"
+        },
+        {
+          "source_variant_id": 56599059956092,
+          "source_title": "Male / 4XL",
+          "target_variant_id": 50461542056283,
+          "target_title": "4XL",
+          "target_price": "19.95"
+        },
+        {
+          "source_variant_id": 56599059988860,
+          "source_title": "Male / 5XL",
+          "target_variant_id": 50461542089051,
+          "target_title": "5XL",
+          "target_price": "19.95"
+        }
+      ],
+      "design_image": "design_404-sleep-not-found-programmer-humor-tee.png"
+    },
+    {
+      "source_handle": "404-sleep-not-found-programmer-humor-tee",
+      "source_title": "404 Sleep Not Found - Programmer Humor Tee",
+      "target_handle": "women-t-shirt",
+      "target_title": "Women T-shirt",
+      "target_product_id": 8676301799771,
+      "variants": [
+        {
+          "source_variant_id": 56599060021628,
+          "source_title": "Female / S",
+          "target_variant_id": 47361096253787,
+          "target_title": "S",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56599060054396,
+          "source_title": "Female / M",
+          "target_variant_id": 47361096286555,
+          "target_title": "M",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56599060087164,
+          "source_title": "Female / L",
+          "target_variant_id": 47361096319323,
+          "target_title": "L",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56599060119932,
+          "source_title": "Female / XL",
+          "target_variant_id": 47361096352091,
+          "target_title": "XL",
+          "target_price": "18.95"
+        }
+      ],
+      "design_image": "design_404-sleep-not-found-programmer-humor-tee.png"
+    },
+    {
+      "source_handle": "main-character-energy-empowerment-slogan-tee",
+      "source_title": "Main Character Energy - Empowerment Slogan Tee",
+      "target_handle": "classic-tee-up-to-5xl",
+      "target_title": "Classic Tee Up To 5XL",
+      "target_product_id": 9864408301915,
+      "variants": [
+        {
+          "source_variant_id": 56599070540156,
+          "source_title": "Male / S",
+          "target_variant_id": 50461540614491,
+          "target_title": "S",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56599070572924,
+          "source_title": "Male / M",
+          "target_variant_id": 50461540647259,
+          "target_title": "M",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56599070605692,
+          "source_title": "Male / L",
+          "target_variant_id": 50461540680027,
+          "target_title": "L",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56599070638460,
+          "source_title": "Male / XL",
+          "target_variant_id": 50461540712795,
+          "target_title": "XL",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56599070671228,
+          "source_title": "Male / 2XL",
+          "target_variant_id": 50461540745563,
+          "target_title": "2XL",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56599070703996,
+          "source_title": "Male / 3XL",
+          "target_variant_id": 50461540778331,
+          "target_title": "3XL",
+          "target_price": "19.95"
+        },
+        {
+          "source_variant_id": 56599070736764,
+          "source_title": "Male / 4XL",
+          "target_variant_id": 50461542056283,
+          "target_title": "4XL",
+          "target_price": "19.95"
+        },
+        {
+          "source_variant_id": 56599070769532,
+          "source_title": "Male / 5XL",
+          "target_variant_id": 50461542089051,
+          "target_title": "5XL",
+          "target_price": "19.95"
+        }
+      ],
+      "design_image": "design_main-character-energy-empowerment-slogan-tee.png"
+    },
+    {
+      "source_handle": "main-character-energy-empowerment-slogan-tee",
+      "source_title": "Main Character Energy - Empowerment Slogan Tee",
+      "target_handle": "women-t-shirt",
+      "target_title": "Women T-shirt",
+      "target_product_id": 8676301799771,
+      "variants": [
+        {
+          "source_variant_id": 56599070802300,
+          "source_title": "Female / S",
+          "target_variant_id": 47361096253787,
+          "target_title": "S",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56599070835068,
+          "source_title": "Female / M",
+          "target_variant_id": 47361096286555,
+          "target_title": "M",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56599070867836,
+          "source_title": "Female / L",
+          "target_variant_id": 47361096319323,
+          "target_title": "L",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56599070900604,
+          "source_title": "Female / XL",
+          "target_variant_id": 47361096352091,
+          "target_title": "XL",
+          "target_price": "18.95"
+        }
+      ],
+      "design_image": "design_main-character-energy-empowerment-slogan-tee.png"
+    },
+    {
+      "source_handle": "nihilistic-penguin-walk-mood-tee",
+      "source_title": "Nihilistic Penguin Walk - Mood Tee",
+      "target_handle": "classic-tee-up-to-5xl",
+      "target_title": "Classic Tee Up To 5XL",
+      "target_product_id": 9864408301915,
+      "variants": [
+        {
+          "source_variant_id": 56599055565180,
+          "source_title": "Male / S",
+          "target_variant_id": 50461540614491,
+          "target_title": "S",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56599055597948,
+          "source_title": "Male / M",
+          "target_variant_id": 50461540647259,
+          "target_title": "M",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56599055630716,
+          "source_title": "Male / L",
+          "target_variant_id": 50461540680027,
+          "target_title": "L",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56599055663484,
+          "source_title": "Male / XL",
+          "target_variant_id": 50461540712795,
+          "target_title": "XL",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56599055696252,
+          "source_title": "Male / 2XL",
+          "target_variant_id": 50461540745563,
+          "target_title": "2XL",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56599055729020,
+          "source_title": "Male / 3XL",
+          "target_variant_id": 50461540778331,
+          "target_title": "3XL",
+          "target_price": "19.95"
+        },
+        {
+          "source_variant_id": 56599055761788,
+          "source_title": "Male / 4XL",
+          "target_variant_id": 50461542056283,
+          "target_title": "4XL",
+          "target_price": "19.95"
+        },
+        {
+          "source_variant_id": 56599055794556,
+          "source_title": "Male / 5XL",
+          "target_variant_id": 50461542089051,
+          "target_title": "5XL",
+          "target_price": "19.95"
+        }
+      ],
+      "design_image": "design_nihilistic-penguin-walk-mood-tee.png"
+    },
+    {
+      "source_handle": "nihilistic-penguin-walk-mood-tee",
+      "source_title": "Nihilistic Penguin Walk - Mood Tee",
+      "target_handle": "women-t-shirt",
+      "target_title": "Women T-shirt",
+      "target_product_id": 8676301799771,
+      "variants": [
+        {
+          "source_variant_id": 56599055827324,
+          "source_title": "Female / S",
+          "target_variant_id": 47361096253787,
+          "target_title": "S",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56599055860092,
+          "source_title": "Female / M",
+          "target_variant_id": 47361096286555,
+          "target_title": "M",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56599055892860,
+          "source_title": "Female / L",
+          "target_variant_id": 47361096319323,
+          "target_title": "L",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56599055925628,
+          "source_title": "Female / XL",
+          "target_variant_id": 47361096352091,
+          "target_title": "XL",
+          "target_price": "18.95"
+        }
+      ],
+      "design_image": "design_nihilistic-penguin-walk-mood-tee.png"
+    },
+    {
+      "source_handle": "no-cap-energy-only-bold-typography-t-shirt",
+      "source_title": "No Cap Energy Only Bold Typography T-Shirt",
+      "target_handle": "classic-tee-up-to-5xl",
+      "target_title": "Classic Tee Up To 5XL",
+      "target_product_id": 9864408301915,
+      "variants": [
+        {
+          "source_variant_id": 56600784339324,
+          "source_title": "Male / S",
+          "target_variant_id": 50461540614491,
+          "target_title": "S",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56600784372092,
+          "source_title": "Male / M",
+          "target_variant_id": 50461540647259,
+          "target_title": "M",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56600784404860,
+          "source_title": "Male / L",
+          "target_variant_id": 50461540680027,
+          "target_title": "L",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56600784437628,
+          "source_title": "Male / XL",
+          "target_variant_id": 50461540712795,
+          "target_title": "XL",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56600784470396,
+          "source_title": "Male / 2XL",
+          "target_variant_id": 50461540745563,
+          "target_title": "2XL",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56600784503164,
+          "source_title": "Male / 3XL",
+          "target_variant_id": 50461540778331,
+          "target_title": "3XL",
+          "target_price": "19.95"
+        },
+        {
+          "source_variant_id": 56600784535932,
+          "source_title": "Male / 4XL",
+          "target_variant_id": 50461542056283,
+          "target_title": "4XL",
+          "target_price": "19.95"
+        },
+        {
+          "source_variant_id": 56600784568700,
+          "source_title": "Male / 5XL",
+          "target_variant_id": 50461542089051,
+          "target_title": "5XL",
+          "target_price": "19.95"
+        }
+      ],
+      "design_image": "design_no-cap-energy-only-bold-typography-t-shirt.png"
+    },
+    {
+      "source_handle": "no-cap-energy-only-bold-typography-t-shirt",
+      "source_title": "No Cap Energy Only Bold Typography T-Shirt",
+      "target_handle": "women-t-shirt",
+      "target_title": "Women T-shirt",
+      "target_product_id": 8676301799771,
+      "variants": [
+        {
+          "source_variant_id": 56600784601468,
+          "source_title": "Female / S",
+          "target_variant_id": 47361096253787,
+          "target_title": "S",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56600784634236,
+          "source_title": "Female / M",
+          "target_variant_id": 47361096286555,
+          "target_title": "M",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56600784667004,
+          "source_title": "Female / L",
+          "target_variant_id": 47361096319323,
+          "target_title": "L",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56600784699772,
+          "source_title": "Female / XL",
+          "target_variant_id": 47361096352091,
+          "target_title": "XL",
+          "target_price": "18.95"
+        }
+      ],
+      "design_image": "design_no-cap-energy-only-bold-typography-t-shirt.png"
+    },
+    {
+      "source_handle": "astous-na-laloun-cyprus-unisex-tee",
+      "source_title": "Astous na Laloun - Limited Edition Tee",
+      "target_handle": "classic-tee-up-to-5xl",
+      "target_title": "Classic Tee Up To 5XL",
+      "target_product_id": 9864408301915,
+      "variants": [
+        {
+          "source_variant_id": 56600794136956,
+          "source_title": "Male / S",
+          "target_variant_id": 50461540614491,
+          "target_title": "S",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56600794169724,
+          "source_title": "Male / M",
+          "target_variant_id": 50461540647259,
+          "target_title": "M",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56600794202492,
+          "source_title": "Male / L",
+          "target_variant_id": 50461540680027,
+          "target_title": "L",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56600794235260,
+          "source_title": "Male / XL",
+          "target_variant_id": 50461540712795,
+          "target_title": "XL",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56600794268028,
+          "source_title": "Male / 2XL",
+          "target_variant_id": 50461540745563,
+          "target_title": "2XL",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56600794300796,
+          "source_title": "Male / 3XL",
+          "target_variant_id": 50461540778331,
+          "target_title": "3XL",
+          "target_price": "19.95"
+        },
+        {
+          "source_variant_id": 56600794333564,
+          "source_title": "Male / 4XL",
+          "target_variant_id": 50461542056283,
+          "target_title": "4XL",
+          "target_price": "19.95"
+        },
+        {
+          "source_variant_id": 56600794366332,
+          "source_title": "Male / 5XL",
+          "target_variant_id": 50461542089051,
+          "target_title": "5XL",
+          "target_price": "19.95"
+        }
+      ],
+      "design_image": "front_design.png"
+    },
+    {
+      "source_handle": "astous-na-laloun-cyprus-unisex-tee",
+      "source_title": "Astous na Laloun - Limited Edition Tee",
+      "target_handle": "women-t-shirt",
+      "target_title": "Women T-shirt",
+      "target_product_id": 8676301799771,
+      "variants": [
+        {
+          "source_variant_id": 56600794399100,
+          "source_title": "Female / S",
+          "target_variant_id": 47361096253787,
+          "target_title": "S",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56600794431868,
+          "source_title": "Female / M",
+          "target_variant_id": 47361096286555,
+          "target_title": "M",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56600794464636,
+          "source_title": "Female / L",
+          "target_variant_id": 47361096319323,
+          "target_title": "L",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56600794497404,
+          "source_title": "Female / XL",
+          "target_variant_id": 47361096352091,
+          "target_title": "XL",
+          "target_price": "18.95"
+        }
+      ],
+      "design_image": "front_design.png"
+    },
+    {
+      "source_handle": "professional-overthinker-bold-typography-tee",
+      "source_title": "Professional Overthinker ï¿½ Bold Typography Tee",
+      "target_handle": "classic-tee-up-to-5xl",
+      "target_title": "Classic Tee Up To 5XL",
+      "target_product_id": 9864408301915,
+      "variants": [
+        {
+          "source_variant_id": 56606195908988,
+          "source_title": "Male / S",
+          "target_variant_id": 50461540614491,
+          "target_title": "S",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56606195941756,
+          "source_title": "Male / M",
+          "target_variant_id": 50461540647259,
+          "target_title": "M",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56606195974524,
+          "source_title": "Male / L",
+          "target_variant_id": 50461540680027,
+          "target_title": "L",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56606196007292,
+          "source_title": "Male / XL",
+          "target_variant_id": 50461540712795,
+          "target_title": "XL",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56606196040060,
+          "source_title": "Male / 2XL",
+          "target_variant_id": 50461540745563,
+          "target_title": "2XL",
+          "target_price": "15.95"
+        },
+        {
+          "source_variant_id": 56606196072828,
+          "source_title": "Male / 3XL",
+          "target_variant_id": 50461540778331,
+          "target_title": "3XL",
+          "target_price": "19.95"
+        },
+        {
+          "source_variant_id": 56606196105596,
+          "source_title": "Male / 4XL",
+          "target_variant_id": 50461542056283,
+          "target_title": "4XL",
+          "target_price": "19.95"
+        },
+        {
+          "source_variant_id": 56606196138364,
+          "source_title": "Male / 5XL",
+          "target_variant_id": 50461542089051,
+          "target_title": "5XL",
+          "target_price": "19.95"
+        }
+      ],
+      "design_image": "design_professional-overthinker-bold-typography-tee.png"
+    },
+    {
+      "source_handle": "professional-overthinker-bold-typography-tee",
+      "source_title": "Professional Overthinker ï¿½ Bold Typography Tee",
+      "target_handle": "women-t-shirt",
+      "target_title": "Women T-shirt",
+      "target_product_id": 8676301799771,
+      "variants": [
+        {
+          "source_variant_id": 56606196171132,
+          "source_title": "Female / S",
+          "target_variant_id": 47361096253787,
+          "target_title": "S",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56606196203900,
+          "source_title": "Female / M",
+          "target_variant_id": 47361096286555,
+          "target_title": "M",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56606196236668,
+          "source_title": "Female / L",
+          "target_variant_id": 47361096319323,
+          "target_title": "L",
+          "target_price": "18.95"
+        },
+        {
+          "source_variant_id": 56606196269436,
+          "source_title": "Female / XL",
+          "target_variant_id": 47361096352091,
+          "target_title": "XL",
+          "target_price": "18.95"
+        }
+      ],
+      "design_image": "design_professional-overthinker-bold-typography-tee.png"
+    }
+  ]
 }

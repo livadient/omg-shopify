@@ -135,7 +135,7 @@ Mappings are stored in `product_mappings.json` at the project root. Variants are
 
 The old separate male/female EU edition products have been replaced by a single unified product with Gender+Size variants:
 
-- **OMG:** `astous-na-laloun-limited-edition-tee` (EUR 30-39.50)
+- **OMG:** `astous-na-laloun-cyprus-unisex-tee` (EUR 30-39.50)
 - **TShirtJunkies (male variants):** `classic-tee-up-to-5xl` (EUR 20-22) -- sizes S-5XL
 - **TShirtJunkies (female variants):** `women-t-shirt` (EUR 23) -- sizes S-XL
 
