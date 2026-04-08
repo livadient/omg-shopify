@@ -75,6 +75,14 @@ from app.config import settings
 | `OPENAI_API_KEY` | `""` | OpenAI API key (for DALL-E 3 image generation) |
 | `OMG_SHOPIFY_BLOG_ID` | `""` | Shopify blog ID for the blog writer agent |
 | `AGENT_TIMEZONE` | `Europe/Nicosia` | Timezone for agent scheduling (APScheduler) |
+| **Google APIs** | | |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | `""` | Path to Google Cloud service account JSON key file |
+| `GOOGLE_SEARCH_CONSOLE_SITE` | `""` | Comma-separated Search Console site URLs (e.g., `sc-domain:omg.com.cy,sc-domain:omg.gr`) |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | `""` | Google Ads API developer token (requires Basic access) |
+| `GOOGLE_ADS_CLIENT_ID` | `""` | OAuth2 client ID for Google Ads API |
+| `GOOGLE_ADS_CLIENT_SECRET` | `""` | OAuth2 client secret for Google Ads API |
+| `GOOGLE_ADS_REFRESH_TOKEN` | `""` | OAuth2 refresh token for Google Ads API |
+| `GOOGLE_ADS_CUSTOMER_ID` | `""` | Google Ads account ID (10 digits, no dashes) |
 
 ## Email Recipients Parsing
 

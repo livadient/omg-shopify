@@ -64,6 +64,13 @@ All settings are loaded from environment variables (`.env` file supported via py
 | `OMG_SHOPIFY_ADMIN_TOKEN` | (empty) | Admin API access token (obtained via OAuth) |
 | `NGROK_DOMAIN` | (empty) | Fixed ngrok domain (e.g. `myapp.ngrok-free.dev`) — avoids random URLs |
 | `PORT` | `8080` | Server port (must match Shopify OAuth redirect URI whitelist) |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | (empty) | Path to Google Cloud service account JSON key |
+| `GOOGLE_SEARCH_CONSOLE_SITE` | (empty) | Comma-separated GSC sites (e.g. `sc-domain:omg.com.cy,sc-domain:omg.gr`) |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | (empty) | Google Ads API developer token (requires Basic access) |
+| `GOOGLE_ADS_CLIENT_ID` | (empty) | OAuth2 client ID for Google Ads |
+| `GOOGLE_ADS_CLIENT_SECRET` | (empty) | OAuth2 client secret for Google Ads |
+| `GOOGLE_ADS_REFRESH_TOKEN` | (empty) | OAuth2 refresh token for Google Ads |
+| `GOOGLE_ADS_CUSTOMER_ID` | (empty) | Google Ads account ID (10 digits, no dashes) |
 
 ## API Endpoints
 
@@ -253,6 +260,8 @@ app/
     blog_writer.py       — Agent "Olive": SEO blog post generation
     design_creator.py    — Agent "Mango": Trend research, design generation, mockup pre-caching
     ranking_advisor.py   — Agent "Atlas": Daily SEO and Google Ads recommendations
+    google_search_console.py — Google Search Console API: real search queries, clicks, CTR, positions
+    google_keyword_planner.py — Google Ads Keyword Planner API: real CPC, search volume, competition
     translation_checker.py — Agent "Hermes": Daily translation checker (English→Greek via Claude)
 product_mappings.json    — Saved variant ID mappings
 data/
@@ -309,7 +318,7 @@ Detailed documentation for every subsystem is in `doc/`:
 | [llm-image-clients.md](doc/llm-image-clients.md) | Claude API and DALL-E 3 client wrappers |
 | [agent1-blog-writer.md](doc/agent1-blog-writer.md) | SEO Blog Writer agent specification |
 | [agent2-design-creator.md](doc/agent2-design-creator.md) | Design Creator agent (5 types, mockup pre-caching) |
-| [agent3-ranking-advisor.md](doc/agent3-ranking-advisor.md) | Ranking Advisor agent (market rotation) |
+| [agent3-ranking-advisor.md](doc/agent3-ranking-advisor.md) | Ranking Advisor agent (market rotation, GSC + Keyword Planner) |
 | [agent4-translation-checker.md](doc/agent4-translation-checker.md) | Translation Checker agent (EN→GR via Claude) |
 
 ## Testing
@@ -518,6 +527,41 @@ The image client (`app/agents/image_client.py`) includes text validation for gen
 - `validate_design_text(image_path, expected_text)` -- Claude vision reads text in generated images and checks correctness
 - `generate_design_with_text_check(concept, expected_text, ...)` -- generates via DALL-E, validates text with Claude, regenerates with correction prompt if wrong (up to 2 retries)
 - Pillow text designs (slogan type) skip `rembg` since they are already transparent PNG
+
+## Google API Integrations (Atlas Data Sources)
+
+Atlas uses real Google data to ground its SEO and Ads recommendations.
+
+### Google Search Console
+
+**Module:** `app/agents/google_search_console.py`
+**Auth:** Service account (`GOOGLE_SERVICE_ACCOUNT_FILE`) with `webmasters.readonly` scope.
+
+| Market | Site | Country Filter |
+|--------|------|----------------|
+| CY | `sc-domain:omg.com.cy` | Cyprus |
+| GR | `sc-domain:omg.gr` | Greece |
+| EU | Both sites combined | No filter |
+
+- `ohmangoes.com` is excluded — Google chose `omg.gr` as its canonical
+- GSC data has ~3 day lag; date ranges are adjusted automatically
+- For EU, results from both sites are merged with weighted average positions
+
+### Google Ads Keyword Planner
+
+**Module:** `app/agents/google_keyword_planner.py`
+**Auth:** OAuth2 (`GOOGLE_ADS_*` env vars). Refresh token obtained via `scripts/get_google_refresh_token.py`.
+
+- Requires **Basic access** developer token (test access only works with test accounts)
+- Fetches keyword ideas with real monthly search volume, CPC ranges, and competition
+- Market-specific geo targets (Cyprus/Greece/Europe) and language (Greek/English)
+- Google Ads Customer ID: `9820211305`
+
+### Google Cloud Project
+
+- **Project:** `omg-shop-492712`
+- **Service account:** `omg-384@omg-shop-492712.iam.gserviceaccount.com`
+- **Enabled APIs:** Search Console API, Google Ads API
 
 ## Future Considerations
 

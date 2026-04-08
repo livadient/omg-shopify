@@ -30,6 +30,14 @@ class Settings(BaseModel):
     openai_api_key: str = ""
     omg_shopify_blog_id: str = ""
     agent_timezone: str = "Europe/Nicosia"
+    # Google APIs
+    google_service_account_file: str = ""
+    google_search_console_site: str = ""
+    google_ads_developer_token: str = ""
+    google_ads_client_id: str = ""
+    google_ads_client_secret: str = ""
+    google_ads_refresh_token: str = ""
+    google_ads_customer_id: str = ""
 
 
 def _parse_recipients(raw: str) -> list[str]:
@@ -57,4 +65,11 @@ settings = Settings(
     openai_api_key=os.getenv("OPENAI_API_KEY", ""),
     omg_shopify_blog_id=os.getenv("OMG_SHOPIFY_BLOG_ID", ""),
     agent_timezone=os.getenv("AGENT_TIMEZONE", "Europe/Nicosia"),
+    google_service_account_file=os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", ""),
+    google_search_console_site=os.getenv("GOOGLE_SEARCH_CONSOLE_SITE", ""),
+    google_ads_developer_token=os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", ""),
+    google_ads_client_id=os.getenv("GOOGLE_ADS_CLIENT_ID", ""),
+    google_ads_client_secret=os.getenv("GOOGLE_ADS_CLIENT_SECRET", ""),
+    google_ads_refresh_token=os.getenv("GOOGLE_ADS_REFRESH_TOKEN", ""),
+    google_ads_customer_id=os.getenv("GOOGLE_ADS_CUSTOMER_ID", ""),
 )

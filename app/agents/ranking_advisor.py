@@ -8,6 +8,8 @@ import httpx
 
 from app.agents import llm_client
 from app.agents.agent_email import send_agent_email
+from app.agents.google_keyword_planner import fetch_keyword_ideas
+from app.agents.google_search_console import fetch_search_performance
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -40,6 +42,15 @@ DO NOT recommend any of the following — these require manual Shopify admin/the
 - Payment gateway configuration or checkout payment options
 - Checkout customizations (address autocomplete, Google Places API, postal code validation, custom checkout scripts)
 - Complex theme customizations (layout changes, section rewrites) — simple injections like schema markup and hreflang tags are OK
+
+You may receive REAL Google Search Console data showing actual search queries, impressions, clicks, CTR, and average position. When this data is available, USE IT to ground your recommendations in reality — identify:
+- High-impression but low-CTR queries (improve meta titles/descriptions)
+- Queries where position is 5-20 (quick wins to push to page 1)
+- Queries you're ranking for that don't have dedicated content
+- Top-performing pages and what makes them work
+- Missing keywords that competitors would target
+
+You may also receive REAL Google Ads Keyword Planner data with actual monthly search volumes, CPC ranges, and competition levels. When available, use these real numbers in your google_ads recommendations instead of estimating.
 
 Output your response as JSON with this structure:
 {
@@ -82,6 +93,22 @@ Output your response as JSON with this structure:
   ],
   "weekly_budget_suggestion": "EUR X-Y per day"
 }"""
+
+
+def _format_keyword_data(keyword_data: list[dict] | None) -> str:
+    """Format keyword planner data for the prompt."""
+    if not keyword_data:
+        return ""
+    lines = "\n".join(
+        f"- \"{kw['keyword']}\" — {kw['avg_monthly_searches']} searches/mo, "
+        f"CPC EUR {kw['low_cpc_eur']}-{kw['high_cpc_eur']}, "
+        f"competition: {kw['competition']}"
+        for kw in keyword_data[:20]
+    )
+    return f"""
+GOOGLE ADS KEYWORD PLANNER DATA (real CPC and volume):
+{lines}
+"""
 
 
 async def _fetch_products() -> list[dict]:
@@ -163,6 +190,8 @@ async def _generate_daily_report_impl(market_override: str | None = None) -> dic
     # Gather context
     products = await _fetch_products()
     articles = await _fetch_articles()
+    gsc_data = fetch_search_performance(market_code)
+    keyword_data = fetch_keyword_ideas(market_code)
     history = _load_history()
     recent = history[-5:] if history else []
 
@@ -181,6 +210,29 @@ async def _generate_daily_report_impl(market_override: str | None = None) -> dic
         for r in recent
     ) or "No previous recommendations"
 
+    # Format GSC data if available
+    gsc_section = ""
+    if gsc_data:
+        query_lines = "\n".join(
+            f"- \"{q['query']}\" — {q['clicks']} clicks, {q['impressions']} impressions, "
+            f"CTR {q['ctr']}%, position {q['position']}"
+            for q in gsc_data["queries"][:30]
+        )
+        page_lines = "\n".join(
+            f"- {p['page']} — {p['clicks']} clicks, {p['impressions']} impressions, "
+            f"CTR {p['ctr']}%, position {p['position']}"
+            for p in gsc_data["pages"][:15]
+        )
+        gsc_section = f"""
+GOOGLE SEARCH CONSOLE DATA ({gsc_data['period']}, market: {gsc_data['market']}):
+
+Top Search Queries:
+{query_lines or 'No query data yet'}
+
+Top Pages:
+{page_lines or 'No page data yet'}
+"""
+
     user_prompt = f"""Today's date: {now.strftime('%A, %B %d, %Y')}
 Market focus: {market_name} ({market_code})
 Store URL: https://omg.com.cy
@@ -190,11 +242,11 @@ CURRENT PRODUCTS:
 
 EXISTING BLOG ARTICLES:
 {article_summary}
-
+{gsc_section}
 RECENT RECOMMENDATIONS (avoid repeating):
 {recent_recs}
-
-Generate today's ranking recommendations focused on the {market_name} market. Be specific and actionable."""
+{_format_keyword_data(keyword_data)}
+Generate today's ranking recommendations focused on the {market_name} market. Be specific and actionable. Use the real keyword data for your Google Ads suggestions instead of estimating."""
 
     # Call Claude
     report = await llm_client.generate_json(

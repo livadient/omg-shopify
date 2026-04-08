@@ -25,11 +25,13 @@ Provides daily actionable SEO and Google Ads recommendations to improve the OMG 
 2. Determine today's market focus (CY/GR/EU based on day of week)
 3. Fetch current OMG products via Shopify Admin API
 4. Fetch existing blog articles (if any)
-5. Load previous recommendations (for context / avoid repetition)
-6. Call Claude API with SEO analysis prompt
-7. Claude generates structured recommendations
-8. Send email directly to user (no approval needed)
-9. Save report to history
+5. Fetch Google Search Console data for the market's site (real queries, clicks, CTR, positions)
+6. Fetch Google Ads Keyword Planner data (real CPC, search volume, competition)
+7. Load previous recommendations (for context / avoid repetition)
+8. Call Claude API with SEO analysis prompt + real Google data
+9. Claude generates structured recommendations grounded in actual search data
+10. Send email directly to user (no approval needed)
+11. Save report to history
 ```
 
 **No approval flow** — this agent is advisory only. It doesn't take automated actions.
@@ -129,21 +131,60 @@ Subject: [OMG SEO] Daily Ranking Report — Cyprus Focus (Mon, Apr 7)
 | POST | `/agents/ranking/generate` | Manually trigger today's report |
 | GET | `/agents/ranking/history` | View past reports (last 30 days) |
 
-## Phase 2: Real Data Integration
+## Google Search Console Integration
 
-In a future phase, add actual ranking data:
+Atlas fetches real search performance data from Google Search Console for each market's site. Data includes actual search queries, impressions, clicks, CTR, and average position.
 
-### Google Search Console API
-- Requires: Google Cloud project + OAuth2 service account
-- Provides: actual search queries, impressions, clicks, average position
-- Endpoint: `searchanalytics/query`
+**Module:** `app/agents/google_search_console.py`
 
-### Google Ads API
-- Requires: Google Ads developer token + OAuth2
-- Provides: keyword planner data, campaign performance
-- Can create/manage campaigns programmatically
+### Site-to-Market Mapping
 
-These are skipped in Phase 1 to avoid setup complexity. The LLM-only approach still provides valuable recommendations based on general SEO knowledge and the store's current state.
+| Market | Site | Country Filter |
+|--------|------|----------------|
+| CY | `sc-domain:omg.com.cy` | Cyprus (`cyp`) |
+| GR | `sc-domain:omg.gr` | Greece (`grc`) |
+| EU | Both sites combined | No filter |
+
+### Setup
+
+1. Create a **Service Account** in Google Cloud Console
+2. Download the JSON key file → place in project root
+3. Add the service account email as a user in Google Search Console for each site
+4. Set `GOOGLE_SERVICE_ACCOUNT_FILE` and `GOOGLE_SEARCH_CONSOLE_SITE` in `.env`
+
+### Notes
+
+- GSC data has a ~3 day lag — the module automatically adjusts date ranges
+- For EU market, data from both sites is merged (duplicate queries combined with weighted average position)
+- `ohmangoes.com` is excluded — Google chose `omg.gr` as the canonical for that domain
+
+## Google Ads Keyword Planner Integration
+
+Atlas fetches real keyword ideas with actual CPC ranges, monthly search volumes, and competition levels from Google Ads Keyword Planner.
+
+**Module:** `app/agents/google_keyword_planner.py`
+
+### Setup
+
+1. Create a Google Ads account (or manager account)
+2. Apply for **Basic access** in Google Ads → Tools → API Center (required — test access only works with test accounts)
+3. Create OAuth2 Desktop credentials in Google Cloud Console
+4. Run `scripts/get_google_refresh_token.py` to get a refresh token
+5. Set all `GOOGLE_ADS_*` variables in `.env`
+
+### Market-Specific Config
+
+| Market | Geo Target | Language | Seed Keywords |
+|--------|-----------|----------|---------------|
+| CY | Cyprus (2196) | Greek (1022) | t-shirt cyprus, μπλουζάκια κύπρος, ... |
+| GR | Greece (2300) | Greek (1022) | t-shirt ελλάδα, μπλουζάκια, ... |
+| EU | Europe (2067) | English (1000) | graphic tees europe, custom t-shirt, ... |
+
+### Notes
+
+- Requires **Basic access** developer token (not test access)
+- Keyword data is sorted by search volume and top 20 are included in the prompt
+- Real CPC/volume data replaces Claude's estimates in the google_ads section
 
 ## Configuration
 
@@ -151,9 +192,20 @@ These are skipped in Phase 1 to avoid setup complexity. The LLM-only approach st
 |----------|---------|
 | `ANTHROPIC_API_KEY` | Claude API for analysis + recommendations |
 | `AGENT_TIMEZONE` | Timezone for schedule (Europe/Nicosia) |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | Path to Google Cloud service account JSON key |
+| `GOOGLE_SEARCH_CONSOLE_SITE` | Comma-separated Search Console sites (e.g. `sc-domain:omg.com.cy,sc-domain:omg.gr`) |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | Google Ads API developer token (requires Basic access) |
+| `GOOGLE_ADS_CLIENT_ID` | OAuth2 client ID for Google Ads |
+| `GOOGLE_ADS_CLIENT_SECRET` | OAuth2 client secret for Google Ads |
+| `GOOGLE_ADS_REFRESH_TOKEN` | OAuth2 refresh token for Google Ads |
+| `GOOGLE_ADS_CUSTOMER_ID` | Google Ads account ID (10 digits, no dashes) |
 
-## Module
+## Modules
 
-**File:** `app/agents/ranking_advisor.py`
-
-**Dependencies:** `app/agents/llm_client.py`, `app/email_service.py`
+| File | Purpose |
+|------|---------|
+| `app/agents/ranking_advisor.py` | Main agent: orchestrates data fetching, prompt building, email |
+| `app/agents/google_search_console.py` | Google Search Console API client |
+| `app/agents/google_keyword_planner.py` | Google Ads Keyword Planner API client |
+| `app/agents/llm_client.py` | Claude API wrapper |
+| `app/agents/agent_email.py` | Email sending |
