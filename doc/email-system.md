@@ -50,7 +50,7 @@ Shared email utility used by all AI agents. Each agent has a name and personalit
 | Blog Writer | Olive | Green | "Olive here -- new post ready!" |
 | Ranking Advisor | Atlas | Blue | "Atlas reporting for duty" |
 | Translation Checker | Hermes | Blue | "Hermes here -- translation run complete" |
-| SEO Optimizer | Sphinx | N/A | Does not send emails |
+| SEO Optimizer | Sphinx | N/A | **DISABLED** — does not send emails; run manually when needed |
 
 ### `send_agent_email(subject, html_body, inline_images=None)`
 

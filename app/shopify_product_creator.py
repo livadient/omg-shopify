@@ -19,6 +19,24 @@ OMG_SHIPPING_PROFILE_ID = 120742379801
 # From: https://omg.com.cy/collections/t-shirts
 OMG_TSHIRTS_COLLECTION_ID = 451595010329
 
+# Category collections — products auto-added based on tags/variants
+CATEGORY_COLLECTIONS = {
+    "mens": 683599987068,       # All products with Male variants
+    "womens": 683599954300,     # All products with Female variants
+    "geeky": 683599921532,      # Tags: geeky, programmer, coding, nerd, tech, gaming
+    "slogan-tees": 683602674044, # Tags: slogan, typography, quote, bold, text tee
+    "cyprus-tees": 683597857148, # Tags: cyprus, astous, κύπρος, cypriot
+    "local-designs": 683600019836, # Tags: cyprus, local, astous, mediterranean
+}
+
+# Tag keywords that map products to category collections
+COLLECTION_TAG_RULES = {
+    "geeky": {"geeky", "programmer", "coding", "nerd", "tech", "gaming", "geek", "developer", "404", "debug", "code"},
+    "slogan-tees": {"slogan", "typography", "quote", "text tee", "energy", "overthinker", "main character", "no cap"},
+    "cyprus-tees": {"cyprus", "astous", "cypriot", "κύπρος", "limassol", "nicosia", "ayia napa"},
+    "local-designs": {"cyprus", "local", "astous", "cypriot", "mediterranean", "κύπρος"},
+}
+
 # Standard metafields for all t-shirt products
 TSHIRT_METAFIELDS = [
     {
@@ -147,6 +165,9 @@ async def create_product(
 
     # Add to T-Shirts collection
     await _add_to_collection(product, OMG_TSHIRTS_COLLECTION_ID)
+
+    # Auto-categorize into mens/womens/geeky/cyprus/local collections
+    await _auto_categorize(product, tags)
 
     # Set standard t-shirt metafields
     await _set_tshirt_metafields(product)
@@ -312,6 +333,39 @@ async def _add_to_collection(product: dict, collection_id: int) -> None:
             logger.info(f"Product {product_id} already in collection {collection_id}")
         else:
             logger.warning(f"Failed to add product {product_id} to collection {collection_id}: {resp.status_code} {resp.text[:200]}")
+
+
+async def _auto_categorize(product: dict, tags: str) -> None:
+    """Auto-add product to category collections based on tags and variants."""
+    product_id = product.get("id")
+    if not product_id:
+        return
+
+    tag_set = {t.strip().lower() for t in tags.split(",") if t.strip()}
+    # Also check product handle/title for keyword matches
+    handle = product.get("handle", "").lower()
+    title = product.get("title", "").lower()
+    all_text = tag_set | {handle, title}
+
+    # Always add to mens and womens (all our tees have both genders)
+    variants = product.get("variants", [])
+    has_male = any(v.get("option1", "").lower() == "male" for v in variants)
+    has_female = any(v.get("option1", "").lower() == "female" for v in variants)
+
+    if has_male and "mens" in CATEGORY_COLLECTIONS:
+        await _add_to_collection(product, CATEGORY_COLLECTIONS["mens"])
+    if has_female and "womens" in CATEGORY_COLLECTIONS:
+        await _add_to_collection(product, CATEGORY_COLLECTIONS["womens"])
+
+    # Tag-based collections
+    for collection_key, keywords in COLLECTION_TAG_RULES.items():
+        if collection_key not in CATEGORY_COLLECTIONS:
+            continue
+        # Match if any keyword appears in tags, handle, or title
+        if any(kw in tag for tag in all_text for kw in keywords):
+            await _add_to_collection(product, CATEGORY_COLLECTIONS[collection_key])
+
+    logger.info(f"Auto-categorized product {product_id}")
 
 
 async def _set_tshirt_metafields(product: dict) -> None:

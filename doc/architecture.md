@@ -2,7 +2,7 @@
 
 ## Overview
 
-Four AI agents (plus an SEO optimizer) integrate into the existing FastAPI service to automate content creation, product design, translations, and SEO optimization for the OMG t-shirt store. Each agent has a name and personality shown in email communications.
+Four AI agents integrate into the existing FastAPI service to automate content creation, product design, translations, and SEO optimization for the OMG t-shirt store. Each agent has a name and personality shown in email communications. A fifth agent (Sphinx, SEO optimizer) exists but is currently **disabled** — its tasks are executed manually based on Atlas' recommendations instead.
 
 **Decision: Build in-app (not Make.com)** — all Shopify API connections already exist, Playwright automation is deeply integrated, and Make.com would add cost ($9-16/month) on top of the same AI API fees (~$15-50/month).
 
@@ -119,7 +119,7 @@ doc/
 | Design Creator (Mango) | Web search trends, market data | Claude ideates + DALL-E 3 renders | Design PNG + cached mockups | Create Shopify product + mapping |
 | Ranking Advisor (Atlas) | Products, articles, market focus | Claude analyzes + recommends | Email report | N/A (advisory) |
 | Translation Checker (Hermes) | Shopify translatable resources | Claude translates EN→GR | Registered translations | Immediate (no approval) |
-| SEO Management (Sphinx) | Product catalog, store metadata | Automated optimization | Fixed handles, meta tags, collections | Immediate (no approval) |
+| SEO Management (Sphinx) | Product catalog, store metadata | Automated optimization | Fixed handles, meta tags, collections | **DISABLED** — run manually via `python -m app.seo_management all` |
 
 ## SEO Management
 

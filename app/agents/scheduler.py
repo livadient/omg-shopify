@@ -45,15 +45,15 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # SEO optimization — daily Mon-Fri at 04:30
-    from app.seo_management import run_all as seo_run_all
-    scheduler.add_job(
-        seo_run_all,
-        CronTrigger(day_of_week="mon-fri", hour=4, minute=30, timezone=tz),
-        id="seo_optimizer",
-        name="SEO Optimization (all tasks)",
-        replace_existing=True,
-    )
+    # SEO optimization (Sphinx) — DISABLED: manually executing Atlas' recommendations instead
+    # from app.seo_management import run_all as seo_run_all
+    # scheduler.add_job(
+    #     seo_run_all,
+    #     CronTrigger(day_of_week="mon-fri", hour=4, minute=30, timezone=tz),
+    #     id="seo_optimizer",
+    #     name="SEO Optimization (all tasks)",
+    #     replace_existing=True,
+    # )
 
     # Translation Checker — daily at 02:00
     from app.agents.translation_checker import check_and_fix_translations

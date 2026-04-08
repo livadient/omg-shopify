@@ -14,7 +14,7 @@ Admin API version: **2024-01**
 
 Uses a custom Shopify app with OAuth. The access token is permanent (no refresh needed).
 
-**OAuth scopes:** `read_orders`, `write_fulfillments`, `read_products`, `write_products`, `read_customers`, `write_customers`, `read_inventory`, `write_inventory`, `read_shipping`, `write_shipping`, `read_order_edits`, `write_order_edits`, `read_translations`, `write_translations`, `read_locales`, `write_locales`
+**OAuth scopes:** `read_orders`, `write_fulfillments`, `read_products`, `write_products`, `read_customers`, `write_customers`, `read_inventory`, `write_inventory`, `read_shipping`, `write_shipping`, `read_order_edits`, `write_order_edits`, `read_translations`, `write_translations`, `read_locales`, `write_locales`, `read_online_store_navigation`, `write_online_store_navigation`
 
 **Base URL:** `https://52922c-2.myshopify.com/admin/api/2024-01/`
 
@@ -46,11 +46,20 @@ Creates products on the OMG store with standardized variant structure:
 - **inventory_management:** `null` -- Shopify does not track stock (print-on-demand, always available)
 
 Functions:
-- `create_product(title, body_html, tags, image_path, published)` -- Create a product with all Gender+Size variants
+- `create_product(title, body_html, tags, image_path, published)` -- Create a product with all Gender+Size variants, auto-categorize into collections
 - `upload_product_image(product_id, image_path, alt)` -- Upload an image to an existing product (base64 encoded)
 - `create_mappings_for_product(omg_product, design_image)` -- Create TWO product mappings (male -> TJ Classic Tee, female -> TJ Women's Tee), fetches TJ product data to match variant IDs by size
 - `fetch_mockup_from_qstomizer(design_image_path, product_type, size)` -- Run Qstomizer automation to get a rendered mockup URL
 - `download_image(url, dest)` -- Download an image from URL to local file
+
+**Auto-categorization:** `create_product()` automatically adds products to category collections based on tags/variants:
+- **Men/Women:** All products (since all tees have both Male+Female variants)
+- **Geeky:** Tags matching: geeky, programmer, coding, nerd, tech, gaming, 404, debug
+- **Slogan Tees:** Tags matching: slogan, typography, quote, text tee, energy, overthinker
+- **Cyprus Tees:** Tags matching: cyprus, astous, cypriot, κύπρος
+- **Local Designs:** Tags matching: cyprus, local, astous, mediterranean
+
+Collection IDs and tag rules are defined in `CATEGORY_COLLECTIONS` and `COLLECTION_TAG_RULES` constants.
 
 TShirtJunkies target product IDs:
 - Male: `classic-tee-up-to-5xl` (product ID `9864408301915`)

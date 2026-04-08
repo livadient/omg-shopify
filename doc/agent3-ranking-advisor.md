@@ -34,6 +34,16 @@ Provides daily actionable SEO and Google Ads recommendations to improve the OMG 
 
 **No approval flow** — this agent is advisory only. It doesn't take automated actions.
 
+### Exclusion List
+
+Atlas's system prompt includes a permanent exclusion list of topics it must **never** recommend, because they require manual Shopify admin configuration and cannot be implemented programmatically:
+
+- Adding or changing payment methods (JCC cards, PayPal badges, etc.)
+- Payment gateway configuration or checkout payment options
+- Checkout customizations (address autocomplete, Google Places API, postal code validation, custom checkout scripts)
+
+To add more exclusions, edit the `SYSTEM_PROMPT` in `app/agents/ranking_advisor.py`.
+
 ## LLM Prompt Strategy
 
 The system prompt includes:

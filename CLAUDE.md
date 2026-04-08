@@ -274,7 +274,7 @@ All times are Cyprus time (Europe/Nicosia):
 |--------------|----------|------|---------|
 | Translation Checker (Hermes) | Daily | 02:00 | Check for untranslated/outdated content, translate EN→GR |
 | Design Creator (Mango) | Mon-Fri | 04:00 | Research trends, generate 5 designs, pre-cache mockups |
-| SEO Optimizer (Sphinx) | Mon-Fri | 04:30 | Fix handles, homepage SEO, create collections |
+| ~~SEO Optimizer (Sphinx)~~ | ~~Mon-Fri~~ | ~~04:30~~ | **DISABLED** — manually executing Atlas' recommendations instead. Can still run manually: `.venv/Scripts/python -m app.seo_management all` |
 | Blog Writer (Olive) | Tue, Fri | 05:00 | Generate SEO blog post for review |
 | Ranking Advisor (Atlas) | Mon-Fri | 07:00 | Daily SEO/Google Ads recommendations |
 
@@ -288,7 +288,7 @@ Each agent has a name and personality reflected in email communications:
 | Blog Writer | Olive | Green | "Olive here -- new post ready!" |
 | Ranking Advisor | Atlas | Blue | "Atlas reporting for duty" |
 | Translation Checker | Hermes | Blue | "Hermes here -- translation run complete" |
-| SEO Optimizer | Sphinx | N/A | Does not send emails |
+| SEO Optimizer | Sphinx | N/A | **DISABLED** — does not send emails; run manually when needed |
 
 ## Documentation Index
 
@@ -322,7 +322,7 @@ Run unit tests: `pytest tests/ -v`
 
 The service connects to the OMG Shopify store via a custom app using OAuth. The app has the following scopes:
 
-`read_orders`, `write_fulfillments`, `read_products`, `write_products`, `read_customers`, `write_customers`, `read_inventory`, `write_inventory`, `read_shipping`, `write_shipping`, `read_order_edits`, `write_order_edits`, `read_translations`, `write_translations`, `read_locales`, `write_locales`
+`read_orders`, `write_fulfillments`, `read_products`, `write_products`, `read_customers`, `write_customers`, `read_inventory`, `write_inventory`, `read_shipping`, `write_shipping`, `read_order_edits`, `write_order_edits`, `read_translations`, `write_translations`, `read_locales`, `write_locales`, `read_online_store_navigation`, `write_online_store_navigation`
 
 ### Setup
 
@@ -440,6 +440,40 @@ All t-shirt products are added to the "OMG T-Shirts" collection automatically on
 - **Collection ID:** `451595010329` — https://omg.com.cy/collections/t-shirts
 - **Constant:** `OMG_TSHIRTS_COLLECTION_ID` in `shopify_product_creator.py`
 - **Automatic:** `create_product()` calls `_add_to_collection()` via `/collects.json`
+
+## Category Collections & Auto-Categorization
+
+New products are automatically added to category collections based on their tags and variants. Defined in `CATEGORY_COLLECTIONS` and `COLLECTION_TAG_RULES` in `shopify_product_creator.py`.
+
+| Collection | Handle | ID | Auto-Rule |
+|------------|--------|----|-----------|
+| Ανδρικά \| Men | `mens` | `683599987068` | All products with Male variants |
+| Γυναικεία \| Women | `womens` | `683599954300` | All products with Female variants |
+| Geeky | `programmers` | `683599921532` | Tags: geeky, programmer, coding, nerd, tech, gaming, 404, debug |
+| Slogan Tees | `slogan-tees` | `683602674044` | Tags: slogan, typography, quote, text tee, energy, overthinker |
+| Κυπριακά \| Cyprus Tees | `cyprus-tees` | `683597857148` | Tags: cyprus, astous, cypriot, κύπρος |
+| Τοπικά Σχέδια \| Local Designs | `local-designs` | `683600019836` | Tags: cyprus, local, astous, mediterranean |
+
+Since all our tees have both Male+Female variants, every product is auto-added to both Men and Women. Tag-based collections match against product tags, handle, and title.
+
+## Main Navigation Menu
+
+The main menu (`gid://shopify/Menu/230918783257`) is managed via the Shopify GraphQL Admin API (requires `read_online_store_navigation` + `write_online_store_navigation` scopes).
+
+```
+Home
+OMG Clothing  ▾  (/collections/t-shirts)
+  ├── All T-Shirts
+  ├── Κυπριακά | Cyprus Tees
+  ├── Geeky
+  ├── Slogan Tees
+  ├── Γυναικεία | Women
+  ├── Ανδρικά | Men
+  └── Τοπικά Σχέδια | Local Designs
+OMG Beauty  (/collections/omg-beauty)
+Blog  (/blogs/news)
+Contact  (/pages/contact)
+```
 
 ## T-Shirt Product Metafields
 

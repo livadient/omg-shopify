@@ -98,7 +98,7 @@ Once running, agents execute automatically:
 | Agent | Schedule | Time (Cyprus) |
 |-------|----------|---------------|
 | Design Creator | Mon-Fri | 04:00 |
-| SEO Optimizer | Mon-Fri | 04:30 |
+| ~~SEO Optimizer~~ | ~~Mon-Fri~~ | ~~04:30~~ | **DISABLED** |
 | Blog Writer | Tue, Fri | 05:00 |
 | Ranking Advisor | Mon-Fri | 07:00 |
 

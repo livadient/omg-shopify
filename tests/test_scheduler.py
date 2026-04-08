@@ -6,13 +6,14 @@ import pytest
 
 class TestStartScheduler:
     def test_registers_all_jobs(self):
-        """Verify that start_scheduler registers the expected 5 jobs."""
+        """Verify that start_scheduler registers the expected 4 jobs (Sphinx/seo_optimizer disabled)."""
         with patch("app.agents.scheduler.scheduler") as mock_scheduler:
             mock_scheduler.get_jobs.return_value = []
             from app.agents.scheduler import start_scheduler
             start_scheduler()
-            # 5 add_job calls: ranking_advisor, blog_writer, design_creator, seo_optimizer, translation_checker
-            assert mock_scheduler.add_job.call_count == 5
+            # 4 add_job calls: ranking_advisor, blog_writer, design_creator, translation_checker
+            # (seo_optimizer/Sphinx is disabled — run manually via python -m app.seo_management)
+            assert mock_scheduler.add_job.call_count == 4
             mock_scheduler.start.assert_called_once()
 
     def test_job_ids(self):
@@ -29,7 +30,7 @@ class TestStartScheduler:
             assert "ranking_advisor" in job_ids
             assert "blog_writer" in job_ids
             assert "design_creator" in job_ids
-            assert "seo_optimizer" in job_ids
+            assert "seo_optimizer" not in job_ids  # Sphinx disabled
             assert "translation_checker" in job_ids
 
     def test_job_schedules(self):
@@ -54,7 +55,7 @@ class TestStartScheduler:
             assert schedule_map["ranking_advisor"] == "7"
             assert schedule_map["blog_writer"] == "5"
             assert schedule_map["design_creator"] == "4"
-            assert schedule_map["seo_optimizer"] == "4"
+            assert "seo_optimizer" not in schedule_map  # Sphinx disabled
 
 
 class TestStopScheduler:
