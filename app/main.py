@@ -914,6 +914,18 @@ async def ranking_history(limit: int = 30):
     return {"reports": get_history(limit)}
 
 
+@app.post("/agents/translation/check")
+async def translation_check():
+    """Manually trigger Hermes translation check."""
+    from app.agents.translation_checker import check_and_fix_translations
+    result = await check_and_fix_translations()
+    return {
+        "status": "done",
+        "message": "Translation check complete, email sent",
+        "result": result,
+    }
+
+
 @app.post("/agents/ads/propose")
 async def ads_propose(market: str | None = None):
     """Manually trigger campaign proposal(s). No market = all 3 markets."""
