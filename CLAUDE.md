@@ -129,7 +129,7 @@ Mapping is defined in `SHIPPING_METHOD_MAP` in `qstomizer_automation.py`. For CY
 
 ## Product Mappings
 
-Mappings are stored in `product_mappings.json` at the project root. Variants are matched by size option.
+Mappings are stored in `product_mappings.json` at the project root (not tracked in git — server-authoritative). Variants are matched by size option.
 
 ### Astous na Laloun - Limited Edition Tee (unified product)
 
@@ -420,7 +420,7 @@ This project needs to be deployed to the same Azure VM as bot-trading (`40.81.13
 ### Notes
 - Playwright in Docker needs `--no-sandbox` flag or the chromium deps listed above
 - The Windows `ProactorEventLoop` workaround in `main.py` is not needed on Linux — may need a small conditional
-- `product_mappings.json` should persist across deploys (mount as volume or commit to repo)
+- `product_mappings.json` is **server-authoritative** (not tracked in git). The running service creates mappings when products are created/approved. Seed manually on first deploy from `.env` or a backup. Never overwrite via `git pull`.
 - Email notification links currently reference `http://40.81.137.193:8080` — update to the correct server IP or domain
 
 ## Shipping Profile (Critical for New Products)

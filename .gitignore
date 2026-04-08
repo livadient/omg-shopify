@@ -6,3 +6,7 @@ __pycache__/
 .env
 explore_qstomizer*.py
 runjar.txt
+
+# Product mappings are server-authoritative (created by the running service)
+# Seed manually on first deploy, never overwrite via git
+product_mappings.json
