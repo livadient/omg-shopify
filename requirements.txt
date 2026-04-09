@@ -26,3 +26,4 @@ rembg[cpu]>=2.0.0
 google-api-python-client>=2.100.0
 google-auth>=2.25.0
 pytrends>=4.9.0
+google-ads>=25.0.0

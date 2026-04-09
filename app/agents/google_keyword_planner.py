@@ -47,7 +47,11 @@ def _get_client():
     ]):
         return None
 
-    from google.ads.googleads.client import GoogleAdsClient
+    try:
+        from google.ads.googleads.client import GoogleAdsClient
+    except ImportError:
+        logger.warning("google-ads package not installed, skipping keyword planner")
+        return None
 
     return GoogleAdsClient.load_from_dict({
         "developer_token": settings.google_ads_developer_token,
