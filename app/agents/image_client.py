@@ -249,7 +249,8 @@ async def validate_design_text(image_path: Path, intended_text: str) -> dict:
     )
 
     client = llm_client._get_client()
-    response = await client.messages.create(
+    response = await llm_client._create_with_retry(
+        client,
         model="claude-sonnet-4-20250514",
         max_tokens=500,
         temperature=0,
