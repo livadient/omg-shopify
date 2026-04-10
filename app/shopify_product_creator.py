@@ -69,6 +69,18 @@ TSHIRT_METAFIELDS = [
         "value": "Machine wash cold inside out with similar colours.\n\nDo not bleach or tumble dry.\n\nIron on low heat, avoiding the printed area.\n\nHang dry for best results.",
         "type": "multi_line_text_field",
     },
+    {
+        "namespace": "custom",
+        "key": "size_guide",
+        "value": (
+            "Men's/Unisex: S(36-38) 91x71cm | M(40-42) 96x74cm | L(44-46) 101x76cm | "
+            "XL(48-50) 106x79cm | 2XL(52-54) 111x81cm | 3XL(56-58) 117x84cm | "
+            "4XL(60-62) 122x86cm | 5XL(64-66) 127x89cm\n"
+            "Women's: S(36-38) 82x63cm | M(40-42) 86x65cm | L(44-46) 91x67cm | XL(48-50) 96x69cm\n"
+            "Measurements: Chest x Length in cm"
+        ),
+        "type": "multi_line_text_field",
+    },
 ]
 
 # Variants: Gender x Size with pricing
