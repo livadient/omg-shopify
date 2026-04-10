@@ -15,7 +15,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 PAST_DESIGNS_FILE = DATA_DIR / "past_designs.json"
 
-SYSTEM_PROMPT = """You are a creative director and trend researcher for OMG (omg.com.cy), an online t-shirt brand. Your target market is ages 16-45 globally.
+SYSTEM_PROMPT_BASE = """You are a creative director and trend researcher for OMG (omg.com.cy), an online t-shirt brand. Your target market is ages 16-45 globally.
 
 Your job is to research what t-shirt designs are currently trending WORLDWIDE and come up with ORIGINAL design concepts. You must NOT copy or reference any existing copyrighted designs, characters, logos, or trademarks.
 
@@ -28,37 +28,73 @@ Think about:
 - Minimalist and artistic designs
 - Nature, travel, and lifestyle themes
 
-For each concept, provide enough detail for an AI image generator to create the design.
+For each concept, provide enough detail for an AI image generator to create the design."""
 
-You MUST generate exactly 5 concepts, one of each type:
-
-1. **Cyprus/Local Design** — A design that celebrates Cyprus, its culture, landmarks, beaches, lifestyle, Greek language, or local humor. Something a Cypriot would proudly wear or a tourist would buy as a souvenir. Can include Greek text. Think Ayia Napa, Limassol, halloumi, Cyprus cats, Mediterranean vibes, Cypriot slang, etc.
+CONCEPT_TYPES_CORE = """1. **Cyprus/Local Design** — A design that celebrates Cyprus, its culture, landmarks, beaches, lifestyle, Greek language, or local humor. Something a Cypriot would proudly wear or a tourist would buy as a souvenir. Can include Greek text. Think Ayia Napa, Limassol, halloumi, Cyprus cats, Mediterranean vibes, Cypriot slang, etc.
 2. **Global Trend Design** — A design based on whatever is trending RIGHT NOW worldwide. This should have absolutely nothing to do with Cyprus, the Mediterranean, or any specific country. Pure global internet culture, viral moments, or worldwide pop culture trends that would sell anywhere on the planet.
 3. **Slogan/Quote** — A bold typographic design where the text IS the design. LEAN HUMOROUS most of the time — punchy one-liners, witty observations, deadpan or sarcastic takes, absurd statements, dark humor, self-deprecating jokes. The kind of slogan someone would actually screenshot and send to a friend. Occasionally (maybe 1 in 4 runs) do a clever motivational/inspirational one for variety. Avoid generic "live laugh love" energy. NOT Cyprus-related.
 4. **Funny Design** — A humorous illustration that makes people laugh or smile. Visual comedy, absurd situations, clever visual puns, meme-inspired (but original) artwork. NOT Cyprus-related.
-5. **Geeky/Nerd Design** — Something for tech lovers, gamers, science nerds, programmers, anime fans, or sci-fi enthusiasts. Clever references, pixel art, code jokes, retro gaming, science humor, or fantasy/D&D themes. Must be original (no copyrighted characters). NOT Cyprus-related.
+5. **Geeky/Nerd Design** — Something for tech lovers, gamers, science nerds, programmers, anime fans, or sci-fi enthusiasts. Clever references, pixel art, code jokes, retro gaming, science humor, or fantasy/D&D themes. Must be original (no copyrighted characters). NOT Cyprus-related."""
 
-IMPORTANT: Only concept #1 should be Cyprus/Mediterranean themed. Concepts #2-#5 must be globally appealing with NO references to Cyprus, Mediterranean, Greece, or any specific region.
+CONCEPT_TYPE_SUMMER = """6. **Summer/Vacation Vibes** — A bright, optimistic summer-energy design. Think palm trees, sunsets, ocean waves, beach cocktails, retro postcards, surf culture, sun rays, swimming, ice cream, flip-flops, "summer mode", sunscreen jokes, beach reading, vacation vibes. Bold saturated colors that scream warm weather. Should appeal to anyone planning a holiday or wishing they were on one. Can be Mediterranean-flavored (it's our home turf) or universal beach/summer vibes — your choice. Keep it fun, not generic stock-art."""
 
-Output as JSON:
+OUTPUT_SCHEMA = """Output as JSON:
 {
   "concepts": [
     {
       "name": "Short concept name",
-      "type": "cyprus|global-trend|slogan|funny|geeky",
+      "type": "cyprus|global-trend|slogan|funny|geeky|summer",
       "description": "Detailed description of the design for image generation",
       "style": "art style (e.g., minimalist vector, vintage retro, bold graphic, watercolor, line art)",
       "text_on_shirt": "Any text/slogan to include (or empty string if none)",
       "target_audience": "male|female|unisex",
       "product_type": "male|female",
       "suggested_title": "Product title for the store",
-      "suggested_tags": "comma,separated,tags",
+      "suggested_tags": "comma,separated,tags (include 'summer' tag for summer-type designs)",
       "reasoning": "Why this design would sell well right now"
     }
   ]
-}
+}"""
 
-Generate exactly 5 concepts — one of each type. All must be original."""
+
+def _is_summer_season() -> bool:
+    """Summer designs sell from early spring through end of summer (Mar–Sep)."""
+    from datetime import datetime, timezone
+    return 3 <= datetime.now(timezone.utc).month <= 9
+
+
+def _build_system_prompt() -> str:
+    """Build Mango's system prompt, including the Summer concept type in season."""
+    summer_active = _is_summer_season()
+    if summer_active:
+        types_block = CONCEPT_TYPES_CORE + "\n" + CONCEPT_TYPE_SUMMER
+        count_word = "exactly 6 concepts, one of each type"
+        scope_note = (
+            "IMPORTANT: Concepts #1 and #6 may be Cyprus/Mediterranean themed. "
+            "Concepts #2-#5 must be globally appealing with NO references to Cyprus, "
+            "Mediterranean, Greece, or any specific region."
+        )
+    else:
+        types_block = CONCEPT_TYPES_CORE
+        count_word = "exactly 5 concepts, one of each type"
+        scope_note = (
+            "IMPORTANT: Only concept #1 should be Cyprus/Mediterranean themed. "
+            "Concepts #2-#5 must be globally appealing with NO references to Cyprus, "
+            "Mediterranean, Greece, or any specific region."
+        )
+
+    return (
+        f"{SYSTEM_PROMPT_BASE}\n\n"
+        f"You MUST generate {count_word}:\n\n"
+        f"{types_block}\n\n"
+        f"{scope_note}\n\n"
+        f"{OUTPUT_SCHEMA}\n\n"
+        f"Generate {count_word.replace(', one of each type', '')} — one of each type. All must be original."
+    )
+
+
+# Backwards-compatible alias for any imports/tests still referencing SYSTEM_PROMPT
+SYSTEM_PROMPT = _build_system_prompt()
 
 
 def _load_past_designs() -> list[dict]:
@@ -163,11 +199,12 @@ Remember: only concept #1 (cyprus type) should be Cyprus-themed. Concepts #2-#5 
 Be specific in the design description so an AI image generator can create it accurately.{exclusion_prompt}
 {_memory_prompt}"""
 
-    # Get design concepts from Claude
+    # Get design concepts from Claude — rebuild prompt each run so the
+    # Summer type kicks in/out automatically as the season changes.
     result = await llm_client.generate_json(
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=_build_system_prompt(),
         user_prompt=user_prompt,
-        max_tokens=3000,
+        max_tokens=3500,
         temperature=0.9,
     )
 

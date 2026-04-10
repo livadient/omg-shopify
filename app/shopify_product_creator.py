@@ -27,6 +27,7 @@ CATEGORY_COLLECTIONS = {
     "slogan-tees": 683602674044, # Tags: slogan, typography, quote, bold, text tee
     "cyprus-tees": 683597857148, # Tags: cyprus, astous, κύπρος, cypriot
     "local-designs": 683600019836, # Tags: cyprus, local, astous, mediterranean
+    "summer-tees": 683678204284,  # Tags: summer, beach, tropical, sun, vacation, sea
 }
 
 # Tag keywords that map products to category collections
@@ -35,6 +36,7 @@ COLLECTION_TAG_RULES = {
     "slogan-tees": {"slogan", "typography", "quote", "text tee", "energy", "overthinker", "main character", "no cap"},
     "cyprus-tees": {"cyprus", "astous", "cypriot", "κύπρος", "limassol", "nicosia", "ayia napa"},
     "local-designs": {"cyprus", "local", "astous", "cypriot", "mediterranean", "κύπρος"},
+    "summer-tees": {"summer", "beach", "tropical", "sun", "sunset", "ocean", "sea", "vacation", "holiday", "palm", "surf", "καλοκαίρι"},
 }
 
 # Standard metafields for all t-shirt products
