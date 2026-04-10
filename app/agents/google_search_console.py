@@ -21,6 +21,54 @@ MARKET_SITES = {
     "EU": ["sc-domain:omg.com.cy", "sc-domain:omg.gr"],
 }
 
+# Substrings used to filter out queries and page URLs that relate to the
+# legacy beauty/wellness products (period cramp massager, heating pad,
+# LED facial mask, etc). The store has shifted to t-shirts, and Atlas /
+# the user does not want these surfacing in GSC reports anymore.
+# Substring match is intentional — case-insensitive — so single tokens
+# like "menstrual" catch every variant.
+BEAUTY_BLOCKLIST_SUBSTRINGS = (
+    # Query/topic keywords
+    "hot water bottle",
+    "period pain",
+    "period cramp",
+    "menstrual",
+    "heating pad",
+    "heating belt",
+    "facial mask",
+    "led mask",
+    "eye massager",
+    "hair growth",
+    "collagen",
+    "skin tightening",
+    "neck lifting",
+    "guasha",
+    "gua sha",
+    "red light therapy",
+    "anti-aging",
+    "anti aging",
+    # Product handles / blog slugs from omg.com.cy
+    "electric-period-cramp",
+    "led-facial-mask",
+    "red-light-therapy",
+    "skin-tightening-and-neck-lifting",
+    "hair-growth-massage-brush",
+    "korean-collagen",
+    "guasha-set",
+    "hot-water-bottle",
+    "period-pain",
+    "the-best-replacement-of-a-hot-water-bottle",
+    "how-women-in-cyprus-deal-with-period-pain",
+)
+
+
+def _is_blocklisted(text: str) -> bool:
+    """Return True if `text` (a search query or URL) matches the beauty blocklist."""
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(needle in lowered for needle in BEAUTY_BLOCKLIST_SUBSTRINGS)
+
 
 def _get_configured_sites() -> list[str]:
     """Parse comma-separated site URLs from config."""
@@ -166,7 +214,7 @@ def fetch_search_performance(
                     "position": row["position"],
                 }
 
-        queries = sorted(
+        queries_all = sorted(
             [
                 {
                     "query": key,
@@ -179,9 +227,9 @@ def fetch_search_performance(
             ],
             key=lambda x: x["impressions"],
             reverse=True,
-        )[:row_limit]
+        )
 
-        pages = [
+        pages_all = [
             {
                 "page": row["keys"][0],
                 "clicks": row["clicks"],
@@ -191,12 +239,21 @@ def fetch_search_performance(
             }
             for row in all_page_rows
         ]
-        pages.sort(key=lambda x: x["impressions"], reverse=True)
-        pages = pages[:25]
+        pages_all.sort(key=lambda x: x["impressions"], reverse=True)
+
+        # Filter out beauty/wellness queries and pages — Atlas focuses on t-shirts
+        # only. The blocklist applies before truncation so genuine t-shirt traffic
+        # is never crowded out by stale beauty rankings.
+        queries = [q for q in queries_all if not _is_blocklisted(q["query"])][:row_limit]
+        pages = [p for p in pages_all if not _is_blocklisted(p["page"])][:25]
+        filtered_q = len(queries_all) - len(queries)
+        filtered_p = len(pages_all) - len(pages)
 
         logger.info(
             f"GSC: fetched {len(queries)} queries, {len(pages)} pages "
             f"for {market_code} from {', '.join(sites_queried)} ({start_date} to {end_date})"
+            + (f" — filtered out {filtered_q} beauty queries, {filtered_p} beauty pages"
+               if filtered_q or filtered_p else "")
         )
 
         return {
