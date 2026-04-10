@@ -64,7 +64,7 @@ class TestMockupOrder:
 
 
 class TestBuildSystemPrompt:
-    """Mango's system prompt must include the Feminine concept type year-round
+    """Mango's system prompt must include Feminine + Love Cyprus year-round
     and the Summer concept type only in season."""
 
     def test_feminine_always_included(self):
@@ -72,30 +72,61 @@ class TestBuildSystemPrompt:
         assert "Trending Feminine Tee" in prompt
         assert "feminine" in prompt  # in the type union
 
-    def test_in_season_count_is_seven(self, monkeypatch):
+    def test_love_cyprus_always_included(self):
+        prompt = _build_system_prompt()
+        assert "Love Cyprus" in prompt
+        assert "love-cyprus" in prompt  # in the type union
+
+    def test_in_season_count_is_eight(self, monkeypatch):
         monkeypatch.setattr("app.agents.design_creator._is_summer_season", lambda: True)
         prompt = _build_system_prompt()
-        assert "exactly 7 concepts" in prompt
+        assert "exactly 8 concepts" in prompt
         assert "Summer/Vacation Vibes" in prompt
         assert "Trending Feminine Tee" in prompt
+        assert "Love Cyprus" in prompt
 
-    def test_out_of_season_count_is_six(self, monkeypatch):
+    def test_out_of_season_count_is_seven(self, monkeypatch):
         monkeypatch.setattr("app.agents.design_creator._is_summer_season", lambda: False)
         prompt = _build_system_prompt()
-        assert "exactly 6 concepts" in prompt
+        assert "exactly 7 concepts" in prompt
         assert "Summer/Vacation Vibes" not in prompt
         assert "Trending Feminine Tee" in prompt
+        assert "Love Cyprus" in prompt
 
-    def test_concept_types_are_numbered_consecutively(self, monkeypatch):
+    def test_concept_types_are_numbered_consecutively_in_season(self, monkeypatch):
         monkeypatch.setattr("app.agents.design_creator._is_summer_season", lambda: True)
         prompt = _build_system_prompt()
-        # All 7 numbered headings must be present
+        # All 8 numbered headings must be present
+        for i in range(1, 9):
+            assert f"{i}. **" in prompt, f"missing concept #{i}"
+
+    def test_concept_types_are_numbered_consecutively_out_of_season(self, monkeypatch):
+        monkeypatch.setattr("app.agents.design_creator._is_summer_season", lambda: False)
+        prompt = _build_system_prompt()
+        # All 7 numbered headings must be present (no Summer)
         for i in range(1, 8):
             assert f"{i}. **" in prompt, f"missing concept #{i}"
+        assert "8. **" not in prompt
 
     def test_feminine_target_audience_is_enforced(self):
         prompt = _build_system_prompt()
         assert "target_audience` MUST be `female`" in prompt
+
+    def test_scope_note_marks_love_cyprus_as_cyprus_themed(self, monkeypatch):
+        monkeypatch.setattr("app.agents.design_creator._is_summer_season", lambda: True)
+        prompt = _build_system_prompt()
+        # In season, the Cyprus-themed concepts are #1 and #8 (love-cyprus)
+        assert "Only concepts #1, #8 may be Cyprus" in prompt
+
+    def test_scope_note_out_of_season_lists_correct_cyprus_indices(self, monkeypatch):
+        monkeypatch.setattr("app.agents.design_creator._is_summer_season", lambda: False)
+        prompt = _build_system_prompt()
+        # Out of season, Cyprus concepts are #1 and #7 (love-cyprus moves up)
+        assert "Only concepts #1, #7 may be Cyprus" in prompt
+
+    def test_love_cyprus_must_include_souvenir_tag(self):
+        prompt = _build_system_prompt()
+        assert "cyprus,tourist,souvenir" in prompt
 
 
 class TestResearchTrends:

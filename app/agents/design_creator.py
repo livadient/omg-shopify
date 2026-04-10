@@ -40,19 +40,21 @@ CONCEPT_TYPE_SUMMER = """6. **Summer/Vacation Vibes** — A bright, optimistic s
 
 CONCEPT_TYPE_FEMININE = """**Trending Feminine Tee** — A design aimed squarely at women, riding the current feminine fashion zeitgeist. Lean into trending aesthetics like coquette / ballet-core (bows, ribbons, pearls, ballet pinks), cottagecore (floral, romantic, pastoral), "that girl" / "clean girl" (minimalist, soft pastels), soft girl, dreamy / ethereal, vintage romance, butterflies, cherries, hearts, delicate hand-drawn florals, retro femme, or whatever feminine micro-trend is hot RIGHT NOW. Soft palettes (blush, sage, cream, lavender, butter yellow) but can also do bold feminine (hot pink, red, black-and-pink). Should feel something a 16-30 year old woman would screenshot from a Pinterest board. NOT generic — pick a specific aesthetic and commit to it. NOT Cyprus-related. CRITICAL: for this concept the `target_audience` MUST be `female` AND `suggested_tags` MUST include the exact word `feminine` (so it auto-routes to the curated Women's Graphic Tees collection) plus the specific aesthetic name you picked (e.g. `feminine,coquette,bows,ribbons` or `feminine,cottagecore,floral,romantic`)."""
 
+CONCEPT_TYPE_LOVE_CYPRUS = """**Love Cyprus (Tourist / Souvenir)** — An ELEVATED Cyprus souvenir tee aimed at tourists, expats, and people who fell in love with the island. The brief: classier than the cliché "I ❤ CYPRUS" gift-shop tee — no big hearts, no Comic Sans, no airport-merch energy. Think instead: refined takes on the Cyprus flag (minimalist, vintage stamp, embroidered-look, tonal/monochrome treatments), elegant single-line art of iconic landmarks (Petra tou Romiou, Kyrenia castle silhouette, Aphrodite, Curium amphitheatre, traditional windmills, Troodos peaks), tasteful "EST. CYPRUS" / "CYPRUS — EST. ANTIQUITY" / "MEDITERRANEAN, CYPRUS" typographic marks, vintage postcard aesthetics, Mediterranean color palettes (terracotta, olive, sea-blue, sand, cream), retro travel-poster style, refined map outlines, Greek-letter wordmarks done with care. Something a 30-something traveller would actually wear back home, not stuff in a drawer. This concept is DIFFERENT from concept #1 (cyprus) which targets locals with insider humor and Cypriot slang — Love Cyprus targets OUTSIDERS who want a beautiful keepsake. CRITICAL: `suggested_tags` MUST include `cyprus,tourist,souvenir` plus your specific aesthetic (e.g. `cyprus,tourist,souvenir,flag,minimalist` or `cyprus,tourist,souvenir,vintage,postcard`)."""
+
 OUTPUT_SCHEMA = """Output as JSON:
 {
   "concepts": [
     {
       "name": "Short concept name",
-      "type": "cyprus|global-trend|slogan|funny|geeky|summer|feminine",
+      "type": "cyprus|global-trend|slogan|funny|geeky|summer|feminine|love-cyprus",
       "description": "Detailed description of the design for image generation",
       "style": "art style (e.g., minimalist vector, vintage retro, bold graphic, watercolor, line art)",
       "text_on_shirt": "Any text/slogan to include (or empty string if none)",
       "target_audience": "male|female|unisex",
       "product_type": "male|female",
       "suggested_title": "Product title for the store",
-      "suggested_tags": "comma,separated,tags (include 'summer' for summer-type, 'feminine,women' for feminine-type)",
+      "suggested_tags": "comma,separated,tags (include 'summer' for summer-type, 'feminine' for feminine-type, 'cyprus,tourist,souvenir' for love-cyprus type)",
       "reasoning": "Why this design would sell well right now"
     }
   ]
@@ -68,38 +70,57 @@ def _is_summer_season() -> bool:
 def _build_system_prompt() -> str:
     """Build Mango's system prompt.
 
-    Always includes the Feminine concept type (year-round).
+    Always includes Feminine and Love Cyprus concept types (year-round).
     Adds the Summer concept type only in season (Mar–Sep).
+
+    Concept types are numbered consecutively from 1; Cyprus-themed types
+    (#1 cyprus and the love-cyprus type) are exempt from the
+    "must not reference Cyprus" scope rule applied to the others.
     """
     summer_active = _is_summer_season()
 
-    # Number the optional types after the 5 core ones
-    next_n = 6
-    extra_blocks: list[str] = []
+    # Number the optional types after the 5 core ones. Each entry is
+    # (label, body, is_cyprus_themed).
+    extras: list[tuple[str, str, bool]] = []
     if summer_active:
         # CONCEPT_TYPE_SUMMER starts with "6. " from when summer was hardcoded
         # at position 6 — strip that leading number so we can renumber dynamically
         # while preserving the **bold** markdown.
-        extra_blocks.append(f"{next_n}. " + CONCEPT_TYPE_SUMMER.lstrip("0123456789. "))
+        extras.append(("summer", CONCEPT_TYPE_SUMMER.lstrip("0123456789. "), False))
+    extras.append(("feminine", CONCEPT_TYPE_FEMININE, False))
+    extras.append(("love-cyprus", CONCEPT_TYPE_LOVE_CYPRUS, True))
+
+    extra_blocks: list[str] = []
+    cyprus_indices: list[int] = [1]  # core concept #1 is cyprus
+    next_n = 6
+    for label, body, is_cyprus in extras:
+        extra_blocks.append(f"{next_n}. " + body)
+        if is_cyprus:
+            cyprus_indices.append(next_n)
         next_n += 1
-    extra_blocks.append(f"{next_n}. " + CONCEPT_TYPE_FEMININE)
-    feminine_index = next_n
-    total_count = next_n  # equals total number of concepts
+    total_count = next_n - 1
 
     types_block = CONCEPT_TYPES_CORE + "\n" + "\n".join(extra_blocks)
 
-    if summer_active:
-        scope_note = (
-            "IMPORTANT: Concepts #1 (cyprus) and #6 (summer) may be Cyprus/Mediterranean themed. "
-            f"Concept #{feminine_index} (feminine) and concepts #2-#5 must be globally appealing "
-            "with NO references to Cyprus, Mediterranean, Greece, or any specific region."
-        )
+    cyprus_indices_str = ", ".join(f"#{i}" for i in cyprus_indices)
+    other_indices = [n for n in range(1, total_count + 1) if n not in cyprus_indices]
+    if len(other_indices) == 1:
+        other_str = f"#{other_indices[0]}"
+    elif len(other_indices) <= 4:
+        other_str = ", ".join(f"#{n}" for n in other_indices)
     else:
-        scope_note = (
-            "IMPORTANT: Only concept #1 should be Cyprus/Mediterranean themed. "
-            f"Concepts #2-#{total_count} must be globally appealing with NO references to Cyprus, "
-            "Mediterranean, Greece, or any specific region."
+        # Compress the long contiguous block from core types
+        other_str = (
+            f"#{other_indices[0]}-#{other_indices[-1]}"
+            if other_indices == list(range(other_indices[0], other_indices[-1] + 1))
+            else ", ".join(f"#{n}" for n in other_indices)
         )
+
+    scope_note = (
+        f"IMPORTANT: Only concepts {cyprus_indices_str} may be Cyprus/Mediterranean themed. "
+        f"Concepts {other_str} must be globally appealing with NO references to Cyprus, "
+        "Mediterranean, Greece, or any specific region."
+    )
 
     count_word = f"exactly {total_count} concepts, one of each type"
 
