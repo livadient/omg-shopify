@@ -8,7 +8,7 @@ import httpx
 
 from app.agents import llm_client
 from app.agents.agent_email import send_agent_email
-from app.agents.google_keyword_planner import fetch_keyword_ideas
+from app.agents.google_keyword_planner import fetch_keyword_ideas, fetch_historical_metrics
 from app.agents.google_search_console import fetch_search_performance
 from app.agents.google_trends import fetch_trending_searches, fetch_related_topics
 from app.agents.memory import build_memory_prompt, build_trends_prompt, save_performance_trend
@@ -56,6 +56,10 @@ You may also receive REAL Google Ads Keyword Planner data with actual monthly se
 
 You may receive GOOGLE TRENDS data showing trending searches and rising related queries. When available, identify trends relevant to t-shirts/fashion/pop culture and suggest how to capitalize on them — new designs, blog posts, ad campaigns, or social media content that rides the trend wave.
 
+CRITICAL — TRENDS VERIFICATION: A "rising" query in Google Trends shows percentage growth versus the previous 3-month baseline of THAT exact query, NOT absolute search volume. A query going from 1 search to 9 is "rising 800%" but is essentially noise. When rising queries have been cross-referenced against Keyword Planner (you will see "Keyword Planner verified: X searches/mo" next to them), TRUST THE VERIFIED ABSOLUTE VOLUME, not the rising %. NEVER recommend building a collection page, blog post, or ad campaign for a query with fewer than 50 verified monthly searches no matter how high its rising % — it's low-base noise. Treat 50–200/mo as a modest opportunity worth a paragraph or tag, and 200+/mo as a real surge worth dedicated content.
+
+TRANSPARENCY: When recommending action on a specific query or trend, briefly cite the source in the action description so the reader can judge it — e.g. "(per Search Console: 142 impressions, position 12)", "(per Keyword Planner: 480/mo, EUR 0.30 CPC, LOW competition)", "(per Google Trends rising 850%, but Keyword Planner shows only 30/mo — skip)". This helps the user trust your recommendations and overrule them when appropriate.
+
 Output your response as JSON with this structure:
 {
   "market_focus": "CY|GR|EU",
@@ -100,19 +104,43 @@ Output your response as JSON with this structure:
 
 
 def _format_trends_data(trends: list[str] | None, related: dict | None) -> str:
-    """Format Google Trends data for the prompt."""
+    """Format Google Trends data for the prompt.
+
+    If rising queries have been cross-referenced with Keyword Planner, the
+    formatter shows the verified absolute volume + CPC alongside the rising %.
+    Atlas should distrust high rising % when verified volume is tiny (<50/mo).
+    """
     sections = []
     if trends:
         lines = "\n".join(f"- {t}" for t in trends[:15])
-        sections.append(f"TRENDING SEARCHES TODAY:\n{lines}")
+        sections.append(f"TRENDING SEARCHES TODAY (Google Trends, raw):\n{lines}")
     if related:
         rising = related.get("rising", [])
         if rising:
-            lines = "\n".join(
-                f"- \"{r['query']}\" (rising {r['value']}%, from: {r['seed']})"
-                for r in rising[:10]
+            lines_out = []
+            for r in rising[:10]:
+                base = f"- \"{r['query']}\" (rising {r['value']}%, from seed: {r['seed']})"
+                if r.get("verified_volume") is not None:
+                    vol = r["verified_volume"]
+                    cpc = r.get("verified_cpc_eur", "?")
+                    comp = r.get("verified_competition", "?")
+                    if vol < 50:
+                        flag = " ⚠ LOW-BASE NOISE — verified volume is tiny, ignore"
+                    elif vol < 200:
+                        flag = " ⚠ small absolute volume — modest opportunity"
+                    else:
+                        flag = " ✓ verified real volume"
+                    base += (
+                        f"\n    → Keyword Planner verified: {vol} searches/mo, "
+                        f"CPC EUR {cpc}, competition {comp}{flag}"
+                    )
+                else:
+                    base += "\n    → Keyword Planner verification unavailable"
+                lines_out.append(base)
+            sections.append(
+                "RISING RELATED QUERIES (Google Trends, last 3 months — cross-referenced with Keyword Planner):\n"
+                + "\n".join(lines_out)
             )
-            sections.append(f"RISING RELATED QUERIES (last 3 months):\n{lines}")
     if not sections:
         return ""
     return "\nGOOGLE TRENDS DATA:\n" + "\n\n".join(sections) + "\n"
@@ -217,6 +245,25 @@ async def _generate_daily_report_impl(market_override: str | None = None) -> dic
     keyword_data = fetch_keyword_ideas(market_code)
     trends_data = fetch_trending_searches(market_code)
     related_data = fetch_related_topics(market_code)
+
+    # Cross-reference Google Trends "rising" queries with Keyword Planner
+    # to distinguish real surges from low-base noise. Mutates related_data
+    # in place so both prompt formatter and email pick up the verified fields.
+    if related_data and related_data.get("rising"):
+        rising_terms = [r["query"] for r in related_data["rising"][:10]]
+        verified = fetch_historical_metrics(rising_terms, market_code)
+        if verified:
+            for r in related_data["rising"][:10]:
+                m = verified.get(r["query"].lower())
+                if m:
+                    r["verified_volume"] = m["avg_monthly_searches"]
+                    r["verified_cpc_eur"] = f"{m['low_cpc_eur']}-{m['high_cpc_eur']}"
+                    r["verified_competition"] = m["competition"]
+            logger.info(
+                f"Cross-referenced {sum(1 for r in related_data['rising'][:10] if 'verified_volume' in r)} "
+                f"rising queries against Keyword Planner volume"
+            )
+
     history = _load_history()
     recent = history[-5:] if history else []
 
@@ -396,30 +443,131 @@ def _build_trends_section_html(trends: list[str] | None, related: dict | None) -
 
     rising_html = ""
     if related and related.get("rising"):
-        rows = "".join(
-            f"<tr>"
-            f"<td style='padding:3px 8px;border-bottom:1px solid #e5e7eb;font-size:12px;'>{r['query']}</td>"
-            f"<td style='padding:3px 8px;border-bottom:1px solid #e5e7eb;font-size:12px;text-align:center;color:#059669;font-weight:bold;'>{r['value']}%</td>"
-            f"<td style='padding:3px 8px;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6b7280;'>{r['seed']}</td>"
-            f"</tr>"
-            for r in related["rising"][:8]
-        )
+        rows = ""
+        for r in related["rising"][:8]:
+            verified_cell = "<span style='color:#9ca3af;'>—</span>"
+            verdict_cell = "<span style='color:#9ca3af;font-size:11px;'>not verified</span>"
+            if r.get("verified_volume") is not None:
+                vol = r["verified_volume"]
+                verified_cell = f"{vol}/mo<br><span style='font-size:10px;color:#6b7280;'>EUR {r.get('verified_cpc_eur', '?')}</span>"
+                if vol < 50:
+                    verdict_cell = "<span style='color:#dc2626;font-size:11px;font-weight:bold;'>NOISE</span>"
+                elif vol < 200:
+                    verdict_cell = "<span style='color:#d97706;font-size:11px;font-weight:bold;'>MODEST</span>"
+                else:
+                    verdict_cell = "<span style='color:#059669;font-size:11px;font-weight:bold;'>REAL</span>"
+            rows += (
+                f"<tr>"
+                f"<td style='padding:3px 8px;border-bottom:1px solid #e5e7eb;font-size:12px;'>{r['query']}</td>"
+                f"<td style='padding:3px 8px;border-bottom:1px solid #e5e7eb;font-size:12px;text-align:center;color:#7c3aed;font-weight:bold;'>{r['value']}%</td>"
+                f"<td style='padding:3px 8px;border-bottom:1px solid #e5e7eb;font-size:12px;text-align:center;'>{verified_cell}</td>"
+                f"<td style='padding:3px 8px;border-bottom:1px solid #e5e7eb;font-size:11px;text-align:center;'>{verdict_cell}</td>"
+                f"<td style='padding:3px 8px;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6b7280;'>{r['seed']}</td>"
+                f"</tr>"
+            )
         rising_html = f"""
-            <h4 style="color:#7c3aed;margin:12px 0 8px;">Rising Related Queries</h4>
+            <h4 style="color:#7c3aed;margin:12px 0 4px;">Rising Related Queries
+                <span style="font-size:11px;font-weight:normal;color:#6b7280;">(cross-referenced with Keyword Planner)</span>
+            </h4>
             <table style="width:100%;border-collapse:collapse;">
                 <thead><tr style="background:#ede9fe;">
                     <th style="padding:3px 8px;text-align:left;font-size:11px;">Query</th>
-                    <th style="padding:3px 8px;text-align:center;font-size:11px;">Growth</th>
-                    <th style="padding:3px 8px;text-align:left;font-size:11px;">Related to</th>
+                    <th style="padding:3px 8px;text-align:center;font-size:11px;">Trends growth</th>
+                    <th style="padding:3px 8px;text-align:center;font-size:11px;">Verified volume</th>
+                    <th style="padding:3px 8px;text-align:center;font-size:11px;">Verdict</th>
+                    <th style="padding:3px 8px;text-align:left;font-size:11px;">Seed</th>
                 </tr></thead>
                 <tbody>{rows}</tbody>
-            </table>"""
+            </table>
+            <p style="font-size:11px;color:#6b7280;margin:6px 0 0;">
+                <strong>NOISE</strong> = &lt;50/mo (low-base growth, ignore) ·
+                <strong>MODEST</strong> = 50–200/mo · <strong>REAL</strong> = 200+/mo
+            </p>"""
 
     return f"""
         <div style="padding:20px;background:#f5f3ff;border:1px solid #c4b5fd;border-top:none;">
             <h3 style="color:#7c3aed;margin-top:0;">Google Trends <span style="font-size:11px;font-weight:normal;">(live data)</span></h3>
             {trending_html}
             {rising_html}
+        </div>"""
+
+
+def _build_sources_section_html(
+    gsc_data: dict | None,
+    keyword_data: list[dict] | None,
+    trends_data: list[str] | None,
+    related_data: dict | None,
+) -> str:
+    """Explain to the reader where each piece of today's intel came from."""
+    has_gsc = bool(gsc_data and (gsc_data.get("queries") or gsc_data.get("pages")))
+    has_kw = bool(keyword_data)
+    has_trends = bool(trends_data)
+    has_rising = bool(related_data and related_data.get("rising"))
+    cross_ref_count = (
+        sum(1 for r in related_data["rising"][:10] if r.get("verified_volume") is not None)
+        if has_rising else 0
+    )
+
+    def _row(label: str, available: bool, body: str) -> str:
+        dot = "#059669" if available else "#9ca3af"
+        return (
+            f"<li style='margin-bottom:8px;'>"
+            f"<span style='display:inline-block;width:8px;height:8px;background:{dot};"
+            f"border-radius:50%;margin-right:8px;'></span>"
+            f"<strong>{label}:</strong> {body}"
+            f"</li>"
+        )
+
+    period = (gsc_data or {}).get("period", "")
+    rows = [
+        _row(
+            "Google Search Console",
+            has_gsc,
+            f"Real omg.com.cy traffic ({period or 'no data yet'}, ~3 day lag). "
+            "Source for top queries, CTR, position, top pages.",
+        ),
+        _row(
+            "Google Ads Keyword Planner",
+            has_kw,
+            "Real monthly search volumes, CPC ranges, and competition levels around our seed keywords. "
+            "Source for everything in the Google Ads suggestions table below.",
+        ),
+        _row(
+            "Google Trends (live)",
+            has_trends,
+            "Trending searches and rising related queries via pytrends. "
+            "Caveat: 'rising %' is relative growth vs the previous 3-month baseline of "
+            "THAT exact query, NOT absolute volume. A query going from 1 → 9 searches counts as 800%.",
+        ),
+        _row(
+            "Trends ↔ Keyword Planner cross-reference",
+            cross_ref_count > 0,
+            f"Verified {cross_ref_count} rising queries against real Keyword Planner volume. "
+            "The 'Verdict' column in the Rising table flags low-base noise (&lt;50/mo) so we don't "
+            "build a collection page for a query nobody actually searches for.",
+        ),
+        _row(
+            "Shopify Admin API",
+            True,
+            "Live product catalog and blog articles — used to ground recommendations in what we actually sell.",
+        ),
+        _row(
+            "Internal report history",
+            True,
+            "Last 5 Atlas reports — used to avoid repeating yesterday's recommendations.",
+        ),
+    ]
+
+    return f"""
+        <div style="padding:20px;background:#fffbeb;border:1px solid #fcd34d;border-top:none;">
+            <h3 style="color:#92400e;margin-top:0;">How I sourced today's intel</h3>
+            <ul style="margin:0;padding-left:0;list-style:none;font-size:13px;color:#374151;">
+                {''.join(rows)}
+            </ul>
+            <p style="margin:12px 0 0;font-size:11px;color:#6b7280;font-style:italic;">
+                When I cite a source inline (e.g. "per Search Console: 142 impressions, position 12"),
+                that's where the number came from. Overrule me when the data tells a different story than your gut.
+            </p>
         </div>"""
 
 
@@ -535,6 +683,8 @@ def _build_email_html(report: dict, market_name: str, market_code: str, now: dat
             <h3 style="color:#7c3aed;margin-top:0;">Content Ideas</h3>
             <ul style="margin:0;padding-left:20px;">{content_html}</ul>
         </div>
+
+        {_build_sources_section_html(gsc_data, keyword_data, trends_data, related_data)}
 
         {_build_gsc_section_html(gsc_data) if has_gsc else ''}
         {_build_trends_section_html(trends_data, related_data) if has_trends else ''}

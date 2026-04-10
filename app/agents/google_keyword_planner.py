@@ -122,3 +122,68 @@ def fetch_keyword_ideas(
     except Exception as e:
         logger.error(f"Google Ads Keyword Planner error: {e}")
         return None
+
+
+def fetch_historical_metrics(
+    terms: list[str],
+    market_code: str = "CY",
+) -> dict[str, dict] | None:
+    """Fetch real Keyword Planner metrics for an EXACT list of search terms.
+
+    Unlike fetch_keyword_ideas (which returns related ideas around a seed),
+    this returns historical metrics for the specific terms passed in. Used
+    by Atlas to cross-reference Google Trends "rising" queries against
+    real absolute volume — distinguishing genuine surges from low-base noise.
+
+    Returns dict mapping lowercase term -> {avg_monthly_searches, competition,
+    low_cpc_eur, high_cpc_eur}, or None if Google Ads is not configured / fails.
+    Terms not found in the response are simply absent from the result dict.
+    """
+    if not terms:
+        return None
+    client = _get_client()
+    if not client:
+        logger.info("Google Ads not configured, skipping historical metrics")
+        return None
+
+    customer_id = settings.google_ads_customer_id
+
+    try:
+        service = client.get_service("KeywordPlanIdeaService")
+        request = client.get_type("GenerateKeywordHistoricalMetricsRequest")
+        request.customer_id = customer_id
+
+        # Google Ads caps the request at 10,000 keywords per call; we send <=50
+        # because trends rising lists are short and we want to keep this fast.
+        request.keywords.extend(terms[:50])
+
+        lang_id = LANGUAGE_CONSTANTS.get(market_code, "1000")
+        request.language = f"languageConstants/{lang_id}"
+
+        geo_id = GEO_TARGETS.get(market_code, "2196")
+        request.geo_target_constants.append(f"geoTargetConstants/{geo_id}")
+
+        response = service.generate_keyword_historical_metrics(request=request)
+
+        results: dict[str, dict] = {}
+        for r in response.results:
+            metrics = r.keyword_metrics
+            if not metrics:
+                continue
+            results[r.text.lower()] = {
+                "avg_monthly_searches": metrics.avg_monthly_searches or 0,
+                "competition": metrics.competition.name if metrics.competition else "UNKNOWN",
+                "low_cpc_eur": round(metrics.low_top_of_page_bid_micros / 1_000_000, 2)
+                if metrics.low_top_of_page_bid_micros else 0,
+                "high_cpc_eur": round(metrics.high_top_of_page_bid_micros / 1_000_000, 2)
+                if metrics.high_top_of_page_bid_micros else 0,
+            }
+
+        logger.info(
+            f"Historical metrics: resolved {len(results)}/{len(terms[:50])} terms for {market_code}"
+        )
+        return results
+
+    except Exception as e:
+        logger.error(f"Google Ads historical metrics error: {e}")
+        return None
