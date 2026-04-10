@@ -340,6 +340,74 @@ async def _precache_mockups(design_image_path: str, concept_name: str) -> dict:
     return cached
 
 
+async def execute_approval_in_background(
+    proposal_id: str,
+    version: str,
+    proposal_data: dict,
+) -> None:
+    """Run execute_approval in the background and notify the user by email.
+
+    The user-facing approve handler returns the success page immediately
+    after claiming the proposal — actual product creation (Playwright +
+    Shopify uploads, ~60-90s) happens here, decoupled from the HTTP
+    response so the browser doesn't time out and the user doesn't double-
+    click thinking it's broken. On success/failure we send a follow-up
+    email so the user knows the outcome without watching the server.
+    """
+    from app.agents.approval import update_status
+    from app.agents.agent_email import send_agent_email
+
+    title = proposal_data.get("suggested_title") or proposal_data.get("name") or "Untitled design"
+    try:
+        result = await execute_approval(proposal_id, version=version)
+        await send_agent_email(
+            subject=f"[Mango] Product live: {title}",
+            html_body=f"""
+            <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
+                <div style="background:#059669;color:white;padding:20px;border-radius:8px 8px 0 0;">
+                    <h2 style="margin:0;">Product live!</h2>
+                    <p style="margin:4px 0 0;opacity:0.9;">Mango finished building your product on Shopify.</p>
+                </div>
+                <div style="padding:20px;background:#f9fafb;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">
+                    <h3 style="margin:0 0 12px;">{title}</h3>
+                    <p style="margin:4px 0;">Product ID: <code>{result.get('product_id', '?')}</code></p>
+                    <p style="margin:4px 0;">Handle: <code>{result.get('product_handle', '?')}</code></p>
+                    <p style="margin:16px 0;">
+                        <a href="{result.get('product_url', '#')}"
+                           style="display:inline-block;padding:10px 20px;background:#2563eb;color:white;text-decoration:none;border-radius:6px;font-weight:bold;">
+                            View on store
+                        </a>
+                    </p>
+                    <p style="color:#6b7280;font-size:13px;margin-top:16px;">
+                        Mapping to TShirtJunkies created automatically. {len(result.get('mappings', []))} variant mapping(s).
+                    </p>
+                </div>
+            </div>
+            """,
+        )
+        logger.info(f"Background approval succeeded for proposal {proposal_id} → product {result.get('product_id')}")
+    except Exception as e:
+        logger.exception(f"Background approval FAILED for proposal {proposal_id}")
+        update_status(proposal_id, "pending")  # rollback so user can re-click the original link
+        await send_agent_email(
+            subject=f"[Mango] FAILED to create product: {title}",
+            html_body=f"""
+            <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
+                <div style="background:#dc2626;color:white;padding:20px;border-radius:8px 8px 0 0;">
+                    <h2 style="margin:0;">Product creation failed</h2>
+                </div>
+                <div style="padding:20px;background:#fef2f2;border:1px solid #fecaca;border-top:none;border-radius:0 0 8px 8px;">
+                    <p>The proposal <strong>'{title}'</strong> failed during product creation.</p>
+                    <pre style="background:#fff;padding:12px;overflow:auto;font-size:12px;border:1px solid #fca5a5;border-radius:4px;">{type(e).__name__}: {e}</pre>
+                    <p style="color:#6b7280;font-size:13px;margin-top:12px;">
+                        Status has been rolled back to <strong>pending</strong> — you can re-click the original approval link in the proposal email to retry.
+                    </p>
+                </div>
+            </div>
+            """,
+        )
+
+
 async def execute_approval(proposal_id: str, version: str = "original") -> dict:
     """Create a Shopify product with male+female variants, fetch TJ mockups, and create mappings.
 

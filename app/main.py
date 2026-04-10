@@ -852,33 +852,57 @@ async def design_preview(proposal_id: str):
     """)
 
 
+# Module-level set keeps strong references to running background approval tasks
+# so asyncio doesn't garbage-collect them mid-execution. Tasks remove themselves
+# via add_done_callback(set.discard) once they finish.
+_background_approval_tasks: set = set()
+
+
 @app.get("/agents/design/approve/{proposal_id}", response_class=HTMLResponse)
 async def design_approve(proposal_id: str, token: str = "", version: str = "original"):
-    """Approve a design — creates product on Shopify + mapping."""
-    from app.agents.approval import claim_proposal, update_status
+    """Approve a design — claims the proposal, returns immediately, builds the
+    product on Shopify in the background.
+
+    Building the product takes 60-90s (Playwright + Shopify uploads). Holding
+    the HTTP response open that long causes browsers to time out and users to
+    double-click the approval link, which would race against the in-flight
+    request. Decoupling the work via asyncio.create_task gives the user
+    instant feedback and the actual work happens server-side. A success/
+    failure email is sent when the background task finishes.
+    """
+    import asyncio
+    from app.agents.approval import claim_proposal
+    from app.agents.design_creator import execute_approval_in_background
+
     proposal = claim_proposal(proposal_id, token)
     if not proposal:
         return HTMLResponse(
             "<h1>Invalid or expired link</h1><p>This proposal may have already been processed.</p>",
             status_code=403,
         )
-    from app.agents.design_creator import execute_approval
-    try:
-        result = await execute_approval(proposal_id, version=version)
-        return HTMLResponse(f"""
-        <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
-            <h1 style="color:#059669;">Product Created!</h1>
-            <p><strong>{proposal['data'].get('suggested_title', proposal['data'].get('name', ''))}</strong></p>
-            <p>Product ID: {result.get('product_id', '?')}</p>
-            <p>Handle: {result.get('product_handle', '?')}</p>
-            <a href="{result.get('product_url', '#')}" style="color:#2563eb;">View on store</a>
-            <p style="color:#6b7280;margin-top:16px;">Mapping to TShirtJunkies has been created automatically.</p>
-        </body></html>
-        """)
-    except Exception as e:
-        # Roll back so the user (or a retry) can try again.
-        update_status(proposal_id, "pending")
-        return HTMLResponse(f"<h1>Error creating product</h1><p>{e}</p>", status_code=500)
+
+    # Fire-and-forget the actual product creation
+    task = asyncio.create_task(
+        execute_approval_in_background(proposal_id, version, proposal["data"])
+    )
+    _background_approval_tasks.add(task)
+    task.add_done_callback(_background_approval_tasks.discard)
+
+    title = proposal["data"].get("suggested_title") or proposal["data"].get("name", "")
+    return HTMLResponse(f"""
+    <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
+        <h1 style="color:#059669;">Approved — building now…</h1>
+        <p><strong>{title}</strong></p>
+        <p style="color:#374151;">Mango is uploading mockups to Qstomizer and creating the product on Shopify.</p>
+        <p style="color:#6b7280;font-size:14px;margin-top:24px;">
+            This usually takes 1–2 minutes. You can close this tab —
+            you'll get an email when it's live with the product link.
+        </p>
+        <p style="color:#9ca3af;font-size:12px;margin-top:24px;">
+            Don't click the approve link again; the work is already running in the background.
+        </p>
+    </body></html>
+    """)
 
 
 @app.get("/agents/design/reject/{proposal_id}", response_class=HTMLResponse)
