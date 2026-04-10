@@ -3,7 +3,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.agents.design_creator import _get_season
+from app.agents.design_creator import (
+    _build_system_prompt,
+    _get_season,
+    _is_summer_season,
+    _mockup_order,
+)
 
 
 class TestGetSeason:
@@ -26,6 +31,71 @@ class TestGetSeason:
         assert _get_season(12) == "Winter"
         assert _get_season(1) == "Winter"
         assert _get_season(2) == "Winter"
+
+
+class TestMockupOrder:
+    """Female-targeted concepts must put the female mockup first so it
+    appears as the main image in the storefront gallery."""
+
+    def test_female_target_puts_female_first(self):
+        order = _mockup_order("female")
+        labels = [label for _, _, label in order]
+        assert labels == ["Female", "Male"]
+
+    def test_male_target_keeps_male_first(self):
+        order = _mockup_order("male")
+        labels = [label for _, _, label in order]
+        assert labels == ["Male", "Female"]
+
+    def test_unisex_defaults_to_male_first(self):
+        order = _mockup_order("unisex")
+        labels = [label for _, _, label in order]
+        assert labels == ["Male", "Female"]
+
+    def test_empty_target_defaults_to_male_first(self):
+        order = _mockup_order("")
+        labels = [label for _, _, label in order]
+        assert labels == ["Male", "Female"]
+
+    def test_case_insensitive(self):
+        order = _mockup_order("FEMALE")
+        labels = [label for _, _, label in order]
+        assert labels == ["Female", "Male"]
+
+
+class TestBuildSystemPrompt:
+    """Mango's system prompt must include the Feminine concept type year-round
+    and the Summer concept type only in season."""
+
+    def test_feminine_always_included(self):
+        prompt = _build_system_prompt()
+        assert "Trending Feminine Tee" in prompt
+        assert "feminine" in prompt  # in the type union
+
+    def test_in_season_count_is_seven(self, monkeypatch):
+        monkeypatch.setattr("app.agents.design_creator._is_summer_season", lambda: True)
+        prompt = _build_system_prompt()
+        assert "exactly 7 concepts" in prompt
+        assert "Summer/Vacation Vibes" in prompt
+        assert "Trending Feminine Tee" in prompt
+
+    def test_out_of_season_count_is_six(self, monkeypatch):
+        monkeypatch.setattr("app.agents.design_creator._is_summer_season", lambda: False)
+        prompt = _build_system_prompt()
+        assert "exactly 6 concepts" in prompt
+        assert "Summer/Vacation Vibes" not in prompt
+        assert "Trending Feminine Tee" in prompt
+
+    def test_concept_types_are_numbered_consecutively(self, monkeypatch):
+        monkeypatch.setattr("app.agents.design_creator._is_summer_season", lambda: True)
+        prompt = _build_system_prompt()
+        # All 7 numbered headings must be present
+        for i in range(1, 8):
+            assert f"{i}. **" in prompt, f"missing concept #{i}"
+
+    def test_feminine_target_audience_is_enforced(self):
+        prompt = _build_system_prompt()
+        assert "target_audience` MUST be `female`" in prompt
 
 
 class TestResearchTrends:

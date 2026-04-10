@@ -38,19 +38,21 @@ CONCEPT_TYPES_CORE = """1. **Cyprus/Local Design** — A design that celebrates 
 
 CONCEPT_TYPE_SUMMER = """6. **Summer/Vacation Vibes** — A bright, optimistic summer-energy design. Think palm trees, sunsets, ocean waves, beach cocktails, retro postcards, surf culture, sun rays, swimming, ice cream, flip-flops, "summer mode", sunscreen jokes, beach reading, vacation vibes. Bold saturated colors that scream warm weather. Should appeal to anyone planning a holiday or wishing they were on one. Can be Mediterranean-flavored (it's our home turf) or universal beach/summer vibes — your choice. Keep it fun, not generic stock-art."""
 
+CONCEPT_TYPE_FEMININE = """**Trending Feminine Tee** — A design aimed squarely at women, riding the current feminine fashion zeitgeist. Lean into trending aesthetics like coquette / ballet-core (bows, ribbons, pearls, ballet pinks), cottagecore (floral, romantic, pastoral), "that girl" / "clean girl" (minimalist, soft pastels), soft girl, dreamy / ethereal, vintage romance, butterflies, cherries, hearts, delicate hand-drawn florals, retro femme, or whatever feminine micro-trend is hot RIGHT NOW. Soft palettes (blush, sage, cream, lavender, butter yellow) but can also do bold feminine (hot pink, red, black-and-pink). Should feel something a 16-30 year old woman would screenshot from a Pinterest board. NOT generic — pick a specific aesthetic and commit to it. NOT Cyprus-related. CRITICAL: this concept's `target_audience` MUST be `female`."""
+
 OUTPUT_SCHEMA = """Output as JSON:
 {
   "concepts": [
     {
       "name": "Short concept name",
-      "type": "cyprus|global-trend|slogan|funny|geeky|summer",
+      "type": "cyprus|global-trend|slogan|funny|geeky|summer|feminine",
       "description": "Detailed description of the design for image generation",
       "style": "art style (e.g., minimalist vector, vintage retro, bold graphic, watercolor, line art)",
       "text_on_shirt": "Any text/slogan to include (or empty string if none)",
       "target_audience": "male|female|unisex",
       "product_type": "male|female",
       "suggested_title": "Product title for the store",
-      "suggested_tags": "comma,separated,tags (include 'summer' tag for summer-type designs)",
+      "suggested_tags": "comma,separated,tags (include 'summer' for summer-type, 'feminine,women' for feminine-type)",
       "reasoning": "Why this design would sell well right now"
     }
   ]
@@ -64,24 +66,42 @@ def _is_summer_season() -> bool:
 
 
 def _build_system_prompt() -> str:
-    """Build Mango's system prompt, including the Summer concept type in season."""
+    """Build Mango's system prompt.
+
+    Always includes the Feminine concept type (year-round).
+    Adds the Summer concept type only in season (Mar–Sep).
+    """
     summer_active = _is_summer_season()
+
+    # Number the optional types after the 5 core ones
+    next_n = 6
+    extra_blocks: list[str] = []
     if summer_active:
-        types_block = CONCEPT_TYPES_CORE + "\n" + CONCEPT_TYPE_SUMMER
-        count_word = "exactly 6 concepts, one of each type"
+        # CONCEPT_TYPE_SUMMER starts with "6. " from when summer was hardcoded
+        # at position 6 — strip that leading number so we can renumber dynamically
+        # while preserving the **bold** markdown.
+        extra_blocks.append(f"{next_n}. " + CONCEPT_TYPE_SUMMER.lstrip("0123456789. "))
+        next_n += 1
+    extra_blocks.append(f"{next_n}. " + CONCEPT_TYPE_FEMININE)
+    feminine_index = next_n
+    total_count = next_n  # equals total number of concepts
+
+    types_block = CONCEPT_TYPES_CORE + "\n" + "\n".join(extra_blocks)
+
+    if summer_active:
         scope_note = (
-            "IMPORTANT: Concepts #1 and #6 may be Cyprus/Mediterranean themed. "
-            "Concepts #2-#5 must be globally appealing with NO references to Cyprus, "
-            "Mediterranean, Greece, or any specific region."
+            "IMPORTANT: Concepts #1 (cyprus) and #6 (summer) may be Cyprus/Mediterranean themed. "
+            f"Concept #{feminine_index} (feminine) and concepts #2-#5 must be globally appealing "
+            "with NO references to Cyprus, Mediterranean, Greece, or any specific region."
         )
     else:
-        types_block = CONCEPT_TYPES_CORE
-        count_word = "exactly 5 concepts, one of each type"
         scope_note = (
             "IMPORTANT: Only concept #1 should be Cyprus/Mediterranean themed. "
-            "Concepts #2-#5 must be globally appealing with NO references to Cyprus, "
+            f"Concepts #2-#{total_count} must be globally appealing with NO references to Cyprus, "
             "Mediterranean, Greece, or any specific region."
         )
+
+    count_word = f"exactly {total_count} concepts, one of each type"
 
     return (
         f"{SYSTEM_PROMPT_BASE}\n\n"
@@ -91,6 +111,21 @@ def _build_system_prompt() -> str:
         f"{OUTPUT_SCHEMA}\n\n"
         f"Generate {count_word.replace(', one of each type', '')} — one of each type. All must be original."
     )
+
+
+def _mockup_order(target_audience: str) -> list[tuple[str, str, str]]:
+    """Return (ptype, size, label) tuples in upload order.
+
+    The targeted gender's mockup is uploaded first so it appears as the
+    main product image in the storefront gallery. Female-targeted designs
+    (e.g. the feminine concept type) put the female mockup first; everything
+    else defaults to male-first (current historical behavior).
+    """
+    male = ("male", "L", "Male")
+    female = ("female", "M", "Female")
+    if (target_audience or "").lower() == "female":
+        return [female, male]
+    return [male, female]
 
 
 # Backwards-compatible alias for any imports/tests still referencing SYSTEM_PROMPT
@@ -362,12 +397,20 @@ async def execute_approval(proposal_id: str, version: str = "original") -> dict:
         design_image=design_filename,
     )
 
-    # Upload images in order: 1) Male mockup, 2) Female mockup, 3) Design artwork
+    # Upload images in order: 1) Primary-gender mockup, 2) Other-gender mockup, 3) Design artwork.
+    # Female-targeted concepts (e.g. "feminine" type) put the female mockup first so
+    # it appears as the main image in the storefront gallery; everything else stays
+    # male-first as before.
     # Use pre-cached mockups only if approving nobg (they were generated from nobg).
     # For "original" approval, regenerate mockups from the original design.
     cached_mockups = data.get("cached_mockups", {}) if version == "nobg" else {}
     design_path = str(STATIC_DIR / design_filename)
-    for ptype, size, label in [("male", "L", "Male"), ("female", "M", "Female")]:
+    upload_order = _mockup_order(data.get("target_audience", ""))
+    logger.info(
+        f"Mockup upload order: {[label for _, _, label in upload_order]} "
+        f"(target_audience={data.get('target_audience', 'unisex')})"
+    )
+    for ptype, size, label in upload_order:
         cached = cached_mockups.get(ptype, {})
         cached_path = Path(cached["path"]) if cached.get("path") else None
 
