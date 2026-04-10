@@ -1,6 +1,7 @@
 """DALL-E 3 image generation wrapper for t-shirt designs."""
 import base64
 import logging
+import random
 from pathlib import Path
 
 import httpx
@@ -13,6 +14,40 @@ logger = logging.getLogger(__name__)
 _client: AsyncOpenAI | None = None
 
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
+
+# Curated palette of bold, high-contrast colors that print well on white tees
+# (the default Qstomizer color). Each is dark/saturated enough to read clearly.
+TEXT_DESIGN_COLORS = [
+    "#000000",  # black
+    "#1a1a2e",  # near-black navy
+    "#1e3a8a",  # navy blue
+    "#0c4a6e",  # deep teal
+    "#7f1d1d",  # dark red
+    "#9a3412",  # rust
+    "#7c2d12",  # burnt brick
+    "#831843",  # burgundy
+    "#581c87",  # dark purple
+    "#14532d",  # forest green
+    "#365314",  # olive
+    "#3f3f46",  # charcoal
+]
+
+# Font candidates checked at runtime — first matches available on the host
+# (Linux server has Liberation + DejaVu fonts; dev machines may have Windows fonts).
+TEXT_DESIGN_FONTS = [
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSerifBold.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeMonoBold.ttf",
+    "C:/Windows/Fonts/arialbd.ttf",
+    "C:/Windows/Fonts/impact.ttf",
+    "C:/Windows/Fonts/COURBD.TTF",
+]
 
 
 def _get_client() -> AsyncOpenAI:
@@ -85,32 +120,37 @@ async def generate_text_design(
 ) -> Path:
     """Generate a text-only design using Pillow typography.
 
+    Picks a random color, font, treatment (plain/outline/shadow) and case
+    on each call so successive slogan tees feel visually distinct instead of
+    all being identical black-on-white Liberation Sans blocks.
+
     Returns the path to the saved PNG file.
     """
     from PIL import Image, ImageDraw, ImageFont
 
+    # Randomized look — color, font, treatment, case
+    color_hex = random.choice(TEXT_DESIGN_COLORS)
+    available_fonts = [fp for fp in TEXT_DESIGN_FONTS if Path(fp).exists()]
+    font_path = random.choice(available_fonts) if available_fonts else None
+    treatment = random.choices(
+        ["plain", "outline", "shadow"], weights=[70, 15, 15], k=1
+    )[0]
+    use_uppercase = random.random() < 0.7  # mostly all-caps, sometimes original case
+
+    logger.info(
+        f"Text design look: color={color_hex} treatment={treatment} "
+        f"upper={use_uppercase} font={Path(font_path).name if font_path else 'default'}"
+    )
+
     img = Image.new("RGBA", size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # Try to load a bold font, fall back to default
-    font = None
-    font_paths = [
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",  # Linux
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # Linux alt
-        "C:/Windows/Fonts/arialbd.ttf",  # Windows
-        "C:/Windows/Fonts/impact.ttf",  # Windows Impact
-    ]
-    for fp in font_paths:
-        if Path(fp).exists():
-            font = ImageFont.truetype(fp, 10)  # size set below
-            break
-
-    # Split text into lines and find optimal font size
-    lines = text.upper().split("\n") if "\n" in text else [text.upper()]
-    # If single long line, wrap it
+    # Split text into lines (respect explicit newlines, otherwise wrap long lines)
+    raw = text.upper() if use_uppercase else text
+    lines = raw.split("\n") if "\n" in raw else [raw]
     if len(lines) == 1 and len(lines[0]) > 20:
         words = lines[0].split()
-        wrapped = []
+        wrapped: list[str] = []
         current = ""
         for w in words:
             test = f"{current} {w}".strip()
@@ -123,44 +163,60 @@ async def generate_text_design(
             wrapped.append(current)
         lines = wrapped
 
-    # Find the largest font size that fits
+    # Find the largest font size that fits inside the canvas
     margin = 80
     max_w = size[0] - margin * 2
     max_h = size[1] - margin * 2
     font_size = 200
+    final_font = None
     while font_size > 20:
-        if font:
-            test_font = ImageFont.truetype(font.path, font_size)
-        else:
-            test_font = ImageFont.load_default()
+        if not font_path:
+            final_font = ImageFont.load_default()
             break
+        test_font = ImageFont.truetype(font_path, font_size)
         line_bboxes = [draw.textbbox((0, 0), line, font=test_font) for line in lines]
         total_w = max(bb[2] - bb[0] for bb in line_bboxes)
         line_height = max(bb[3] - bb[1] for bb in line_bboxes)
         total_h = line_height * len(lines) + (len(lines) - 1) * (font_size * 0.3)
         if total_w <= max_w and total_h <= max_h:
+            final_font = test_font
             break
         font_size -= 4
 
-    if font:
-        final_font = ImageFont.truetype(font.path, font_size)
-    else:
-        final_font = ImageFont.load_default()
+    if final_font is None:
+        final_font = (
+            ImageFont.truetype(font_path, font_size) if font_path else ImageFont.load_default()
+        )
 
-    # Calculate total block height for centering
+    # Centering math
     line_bboxes = [draw.textbbox((0, 0), line, font=final_font) for line in lines]
     line_height = max(bb[3] - bb[1] for bb in line_bboxes)
     spacing = int(font_size * 0.3)
     total_height = line_height * len(lines) + spacing * (len(lines) - 1)
     y_start = (size[1] - total_height) // 2
 
-    # Draw each line centered
+    # Draw each line centered with the chosen treatment
     for i, line in enumerate(lines):
         bbox = draw.textbbox((0, 0), line, font=final_font)
         text_w = bbox[2] - bbox[0]
         x = (size[0] - text_w) // 2
         y = y_start + i * (line_height + spacing)
-        draw.text((x, y), line, fill="black", font=final_font)
+
+        if treatment == "shadow":
+            offset = max(4, font_size // 30)
+            draw.text(
+                (x + offset, y + offset), line,
+                fill=(0, 0, 0, 110), font=final_font,
+            )
+            draw.text((x, y), line, fill=color_hex, font=final_font)
+        elif treatment == "outline":
+            stroke_w = max(2, font_size // 40)
+            draw.text(
+                (x, y), line, fill=color_hex, font=final_font,
+                stroke_width=stroke_w, stroke_fill="black",
+            )
+        else:
+            draw.text((x, y), line, fill=color_hex, font=final_font)
 
     # Save
     proposals_dir = STATIC_DIR / "proposals"
