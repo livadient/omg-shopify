@@ -7,6 +7,7 @@ from app.agents.approval import (
     _load_proposals,
     _save_proposals,
     approval_url,
+    claim_proposal,
     create_proposal,
     get_proposal,
     list_proposals,
@@ -121,6 +122,47 @@ class TestUpdateStatus:
         update_status(p["id"], "approved")
         reloaded = get_proposal(p["id"])
         assert reloaded["status"] == "approved"
+
+
+class TestClaimProposal:
+    def test_first_claim_succeeds(self):
+        p = create_proposal("design", {})
+        claimed = claim_proposal(p["id"], p["token"])
+        assert claimed is not None
+        assert claimed["status"] == "processing"
+
+    def test_second_claim_returns_none(self):
+        """Race-condition guard: only one parallel approver wins."""
+        p = create_proposal("design", {})
+        first = claim_proposal(p["id"], p["token"])
+        second = claim_proposal(p["id"], p["token"])
+        assert first is not None
+        assert second is None
+
+    def test_claim_persists_processing_status(self):
+        p = create_proposal("design", {})
+        claim_proposal(p["id"], p["token"])
+        reloaded = get_proposal(p["id"])
+        assert reloaded["status"] == "processing"
+
+    def test_wrong_token_returns_none(self):
+        p = create_proposal("design", {})
+        assert claim_proposal(p["id"], "wrong") is None
+        # Status should remain pending
+        assert get_proposal(p["id"])["status"] == "pending"
+
+    def test_already_approved_returns_none(self):
+        p = create_proposal("design", {})
+        update_status(p["id"], "approved")
+        assert claim_proposal(p["id"], p["token"]) is None
+
+    def test_rollback_to_pending_allows_retry(self):
+        """After a failed approval, status is reset to pending and re-claimable."""
+        p = create_proposal("design", {})
+        claim_proposal(p["id"], p["token"])
+        update_status(p["id"], "pending")  # rollback
+        retried = claim_proposal(p["id"], p["token"])
+        assert retried is not None
 
 
 class TestApprovalUrl:

@@ -751,8 +751,8 @@ async def blog_preview(proposal_id: str):
 @app.get("/agents/blog/approve/{proposal_id}", response_class=HTMLResponse)
 async def blog_approve(proposal_id: str, token: str = ""):
     """Approve and publish a blog post."""
-    from app.agents.approval import validate_token, update_status
-    proposal = validate_token(proposal_id, token)
+    from app.agents.approval import claim_proposal, update_status
+    proposal = claim_proposal(proposal_id, token)
     if not proposal:
         return HTMLResponse(
             "<h1>Invalid or expired link</h1><p>This proposal may have already been processed.</p>",
@@ -773,6 +773,7 @@ async def blog_approve(proposal_id: str, token: str = ""):
         </body></html>
         """)
     except Exception as e:
+        update_status(proposal_id, "pending")
         return HTMLResponse(f"<h1>Error publishing</h1><p>{e}</p>", status_code=500)
 
 
@@ -854,8 +855,8 @@ async def design_preview(proposal_id: str):
 @app.get("/agents/design/approve/{proposal_id}", response_class=HTMLResponse)
 async def design_approve(proposal_id: str, token: str = "", version: str = "original"):
     """Approve a design — creates product on Shopify + mapping."""
-    from app.agents.approval import validate_token
-    proposal = validate_token(proposal_id, token)
+    from app.agents.approval import claim_proposal, update_status
+    proposal = claim_proposal(proposal_id, token)
     if not proposal:
         return HTMLResponse(
             "<h1>Invalid or expired link</h1><p>This proposal may have already been processed.</p>",
@@ -875,6 +876,8 @@ async def design_approve(proposal_id: str, token: str = "", version: str = "orig
         </body></html>
         """)
     except Exception as e:
+        # Roll back so the user (or a retry) can try again.
+        update_status(proposal_id, "pending")
         return HTMLResponse(f"<h1>Error creating product</h1><p>{e}</p>", status_code=500)
 
 
@@ -1019,8 +1022,8 @@ async def ads_propose(market: str | None = None):
 @app.get("/agents/ads/approve/{proposal_id}", response_class=HTMLResponse)
 async def ads_approve(proposal_id: str, token: str = ""):
     """Approve a campaign proposal — creates it in Google Ads (paused)."""
-    from app.agents.approval import validate_token
-    proposal = validate_token(proposal_id, token)
+    from app.agents.approval import claim_proposal, update_status
+    proposal = claim_proposal(proposal_id, token)
     if not proposal:
         return HTMLResponse(
             "<h1>Invalid or expired link</h1><p>This proposal may have already been processed.</p>",
@@ -1042,6 +1045,7 @@ async def ads_approve(proposal_id: str, token: str = ""):
         </body></html>
         """)
     except Exception as e:
+        update_status(proposal_id, "pending")
         return HTMLResponse(f"<h1>Error creating campaign</h1><p>{e}</p>", status_code=500)
 
 
