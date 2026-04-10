@@ -28,6 +28,7 @@ CATEGORY_COLLECTIONS = {
     "cyprus-tees": 683597857148, # Tags: cyprus, astous, κύπρος, cypriot
     "local-designs": 683600019836, # Tags: cyprus, local, astous, mediterranean
     "summer-tees": 683678204284,  # Tags: summer, beach, tropical, sun, vacation, sea
+    "feminine-tees": 683679842684, # Curated home for trending feminine designs (separate from the catch-all "womens")
 }
 
 # Tag keywords that map products to category collections
@@ -37,6 +38,15 @@ COLLECTION_TAG_RULES = {
     "cyprus-tees": {"cyprus", "astous", "cypriot", "κύπρος", "limassol", "nicosia", "ayia napa"},
     "local-designs": {"cyprus", "local", "astous", "cypriot", "mediterranean", "κύπρος"},
     "summer-tees": {"summer", "beach", "tropical", "sun", "sunset", "ocean", "sea", "vacation", "holiday", "palm", "surf", "καλοκαίρι"},
+    "feminine-tees": {
+        # Aesthetic-specific keywords only — avoid generic "women" / "pink" which
+        # would cross-pollute since every OMG tee has female variants. The
+        # `feminine` tag is the canonical signal Mango's feminine concept type emits.
+        "feminine", "femme", "girly", "coquette", "ballet core", "ballet-core",
+        "cottagecore", "soft girl", "soft-girl", "clean girl", "that girl",
+        "dreamy", "vintage romance", "blush palette",
+        "ribbon", "pearl", "bow",
+    },
 }
 
 # Standard metafields for all t-shirt products

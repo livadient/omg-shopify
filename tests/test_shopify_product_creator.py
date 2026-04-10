@@ -6,6 +6,8 @@ import pytest
 
 from app.shopify_product_creator import (
     ADMIN_API_VERSION,
+    CATEGORY_COLLECTIONS,
+    COLLECTION_TAG_RULES,
     TJ_PRODUCTS,
     VARIANTS,
     _admin_url,
@@ -133,3 +135,37 @@ class TestUploadProductImage:
 
             result = await upload_product_image(999, img, alt="Test")
             assert result["id"] == 1
+
+
+
+class TestCategoryCollectionWiring:
+    """Auto-categorization rules must route products correctly into the
+    new feminine-tees collection without cross-polluting."""
+
+    def test_feminine_tees_id_present(self):
+        assert CATEGORY_COLLECTIONS["feminine-tees"] == 683679842684
+
+    def test_feminine_tag_routes_to_feminine_tees(self):
+        rules = COLLECTION_TAG_RULES["feminine-tees"]
+        assert "feminine" in rules
+
+    def test_aesthetic_keywords_present(self):
+        rules = COLLECTION_TAG_RULES["feminine-tees"]
+        for kw in ("coquette", "cottagecore", "soft girl", "that girl", "dreamy"):
+            assert kw in rules, f"missing {kw}"
+
+    def test_generic_women_keyword_excluded(self):
+        # Every OMG tee has female variants, so 'women' as a tag would
+        # cross-pollute and dump everything into the feminine collection.
+        rules = COLLECTION_TAG_RULES["feminine-tees"]
+        assert "women" not in rules
+
+    def test_generic_pink_keyword_excluded(self):
+        # 'pink' is too broad — many designs use pink without being feminine-coded.
+        rules = COLLECTION_TAG_RULES["feminine-tees"]
+        assert "pink" not in rules
+
+    def test_summer_tees_unchanged(self):
+        # Regression: the summer collection wiring should still work.
+        assert CATEGORY_COLLECTIONS["summer-tees"] == 683678204284
+        assert "summer" in COLLECTION_TAG_RULES["summer-tees"]
