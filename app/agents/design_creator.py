@@ -499,6 +499,17 @@ async def execute_approval(proposal_id: str, version: str = "original") -> dict:
         f"Mockup upload order: {[label for _, _, label in upload_order]} "
         f"(target_audience={data.get('target_audience', 'unisex')})"
     )
+
+    # Group variant IDs by gender so each mockup can be linked to its variants —
+    # picking a Female variant on the product page swaps the gallery to the female mockup.
+    variant_ids_by_gender: dict[str, list[int]] = {"male": [], "female": []}
+    for v in product.get("variants", []):
+        gender = (v.get("option1") or "").lower()
+        if "female" in gender:
+            variant_ids_by_gender["female"].append(v["id"])
+        elif "male" in gender:
+            variant_ids_by_gender["male"].append(v["id"])
+
     for ptype, size, label in upload_order:
         cached = cached_mockups.get(ptype, {})
         cached_path = Path(cached["path"]) if cached.get("path") else None
@@ -516,8 +527,16 @@ async def execute_approval(proposal_id: str, version: str = "original") -> dict:
             await download_image(mockup_url, mockup_path)
 
         try:
-            await upload_product_image(product_id, mockup_path, alt=f"{label} T-Shirt Mockup")
-            logger.info(f"Uploaded {label} mockup to product {product_id}")
+            await upload_product_image(
+                product_id,
+                mockup_path,
+                alt=f"{label} T-Shirt Mockup",
+                variant_ids=variant_ids_by_gender.get(ptype) or None,
+            )
+            logger.info(
+                f"Uploaded {label} mockup to product {product_id} "
+                f"(linked to {len(variant_ids_by_gender.get(ptype) or [])} {ptype} variants)"
+            )
         except Exception as e:
             logger.warning(f"Failed to upload {label} mockup: {e}")
 

@@ -446,16 +446,33 @@ async def fix_sold_out_product(product_id: int) -> dict:
     return {"product_id": product_id, "variants_fixed": len(product.get("variants", []))}
 
 
-async def upload_product_image(product_id: int, image_path: Path, alt: str = "") -> dict:
-    """Upload an additional image to an existing product."""
+async def upload_product_image(
+    product_id: int,
+    image_path: Path,
+    alt: str = "",
+    variant_ids: list[int] | None = None,
+) -> dict:
+    """Upload an additional image to an existing product.
+
+    If variant_ids is provided, the image is linked to those variants — picking
+    one of them on the product page swaps the gallery to this image.
+    """
     img_bytes = image_path.read_bytes()
     img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+
+    image_payload: dict = {
+        "attachment": img_b64,
+        "filename": image_path.name,
+        "alt": alt,
+    }
+    if variant_ids:
+        image_payload["variant_ids"] = variant_ids
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             _admin_url(f"products/{product_id}/images.json"),
             headers=_headers(),
-            json={"image": {"attachment": img_b64, "filename": image_path.name, "alt": alt}},
+            json={"image": image_payload},
             timeout=60,
         )
         resp.raise_for_status()
