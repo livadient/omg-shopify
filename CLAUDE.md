@@ -282,7 +282,7 @@ All times are Cyprus time (Europe/Nicosia):
 | Agent (Name) | Schedule | Time | Purpose |
 |--------------|----------|------|---------|
 | Translation Checker (Hermes) | Daily | 02:00 | Check for untranslated/outdated content, translate EN→GR |
-| Design Creator (Mango) | Mon-Fri | 04:00 | Research trends, generate 5 designs, pre-cache mockups |
+| Design Creator (Mango) | Daily | 04:00 | Research trends, generate 5 designs, pre-cache mockups |
 | ~~SEO Optimizer (Sphinx)~~ | ~~Mon-Fri~~ | ~~04:30~~ | **DISABLED** — manually executing Atlas' recommendations instead. Can still run manually: `.venv/Scripts/python -m app.seo_management all` |
 | Blog Writer (Olive) | Tue, Fri | 05:00 | Generate SEO blog post for review |
 | Ranking Advisor (Atlas) | Mon-Fri | 07:00 | Daily SEO/Google Ads recommendations |
