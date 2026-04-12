@@ -100,19 +100,19 @@ TSHIRT_METAFIELDS = [
 # inventory_management=null means Shopify won't track stock (always available) — correct for print-on-demand
 VARIANTS = [
     # Male — inventory_management="shopify" so we can set stock levels; policy="continue" as fallback
-    {"option1": "Male", "option2": "S", "price": "30.00", "inventory_management": "shopify", "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "M", "price": "30.00", "inventory_management": "shopify", "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "L", "price": "30.00", "inventory_management": "shopify", "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "XL", "price": "30.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "S", "price": "25.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "M", "price": "25.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "L", "price": "25.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Male", "option2": "XL", "price": "25.00", "inventory_management": "shopify", "inventory_policy": "continue"},
     {"option1": "Male", "option2": "2XL", "price": "35.00", "inventory_management": "shopify", "inventory_policy": "continue"},
     {"option1": "Male", "option2": "3XL", "price": "37.00", "inventory_management": "shopify", "inventory_policy": "continue"},
     {"option1": "Male", "option2": "4XL", "price": "39.50", "inventory_management": "shopify", "inventory_policy": "continue"},
     {"option1": "Male", "option2": "5XL", "price": "39.50", "inventory_management": "shopify", "inventory_policy": "continue"},
     # Female
-    {"option1": "Female", "option2": "S", "price": "30.00", "inventory_management": "shopify", "inventory_policy": "continue"},
-    {"option1": "Female", "option2": "M", "price": "30.00", "inventory_management": "shopify", "inventory_policy": "continue"},
-    {"option1": "Female", "option2": "L", "price": "30.00", "inventory_management": "shopify", "inventory_policy": "continue"},
-    {"option1": "Female", "option2": "XL", "price": "30.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Female", "option2": "S", "price": "25.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Female", "option2": "M", "price": "25.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Female", "option2": "L", "price": "25.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {"option1": "Female", "option2": "XL", "price": "25.00", "inventory_management": "shopify", "inventory_policy": "continue"},
 ]
 
 # TShirtJunkies target product IDs for mapping
