@@ -15,6 +15,9 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 PAST_DESIGNS_FILE = DATA_DIR / "past_designs.json"
 
+# Extra recipients who should receive Mango's emails (in addition to settings.email_recipients)
+EXTRA_RECIPIENTS = ["kyriaki_mara@yahoo.com"]
+
 SYSTEM_PROMPT_BASE = """You are a creative director and trend researcher for OMG (omg.com.cy), an online t-shirt brand. Your target market is ages 16-45 globally.
 
 Your job is to research what t-shirt designs are currently trending WORLDWIDE and come up with ORIGINAL design concepts. You must NOT copy or reference any existing copyrighted designs, characters, logos, or trademarks.
@@ -405,6 +408,7 @@ async def execute_approval_in_background(
                 </div>
             </div>
             """,
+            extra_recipients=EXTRA_RECIPIENTS,
         )
         logger.info(f"Background approval succeeded for proposal {proposal_id} → product {result.get('product_id')}")
     except Exception as e:
@@ -426,6 +430,7 @@ async def execute_approval_in_background(
                 </div>
             </div>
             """,
+            extra_recipients=EXTRA_RECIPIENTS,
         )
 
 
@@ -651,6 +656,7 @@ async def _send_design_email(proposals: list[dict]) -> None:
         subject=f"[Mango] {len(proposals)} fresh designs hot off the easel",
         html_body=html,
         inline_images=inline_images,
+        extra_recipients=EXTRA_RECIPIENTS,
     )
 
 

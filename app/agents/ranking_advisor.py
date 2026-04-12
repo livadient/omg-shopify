@@ -14,6 +14,9 @@ from app.agents.google_trends import fetch_trending_searches, fetch_related_topi
 from app.agents.memory import build_memory_prompt, build_trends_prompt, save_performance_trend
 from app.config import settings
 
+# Extra recipients who should receive Atlas' emails (in addition to settings.email_recipients)
+EXTRA_RECIPIENTS = ["kyriaki_mara@yahoo.com"]
+
 logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
@@ -352,6 +355,7 @@ Generate today's ranking recommendations focused on the {market_name} market. Be
     await send_agent_email(
         subject=f"[Atlas] {market_name} briefing — {day_name}, {now.strftime('%b %d')}",
         html_body=html,
+        extra_recipients=EXTRA_RECIPIENTS,
     )
 
     logger.info(f"Ranking report sent for {market_name}")
@@ -904,6 +908,7 @@ Propose a campaign for the {market_name} market. Incorporate relevant trends if 
     await send_agent_email(
         subject=f"[Atlas] Campaign proposal — {proposal_data.get('campaign_name', 'New')} ({market_name})",
         html_body=html,
+        extra_recipients=EXTRA_RECIPIENTS,
     )
 
     logger.info(f"Campaign proposal sent: {proposal_data.get('campaign_name')}")
@@ -952,6 +957,7 @@ async def execute_campaign_approval(proposal_id: str) -> dict:
     await send_agent_email(
         subject=f"[Atlas] Campaign live — {proposal['data'].get('campaign_name', 'New')}",
         html_body=html,
+        extra_recipients=EXTRA_RECIPIENTS,
     )
 
     return result

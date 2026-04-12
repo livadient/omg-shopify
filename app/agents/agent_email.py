@@ -17,6 +17,7 @@ async def send_agent_email(
     subject: str,
     html_body: str,
     inline_images: dict[str, Path] | None = None,
+    extra_recipients: list[str] | None = None,
 ) -> None:
     """Send an HTML email to the configured recipients.
 
@@ -24,15 +25,25 @@ async def send_agent_email(
         subject: Email subject
         html_body: HTML body (use cid:KEY in img src for inline images)
         inline_images: Dict of {cid_key: file_path} for inline image attachments
+        extra_recipients: Additional emails to include (merged with settings.email_recipients, deduped)
     """
     if not settings.email_recipients or not settings.smtp_host:
         logger.warning("Email not configured, skipping agent email")
         return
 
+    # Merge base recipients with any extras (preserve order, dedupe case-insensitively)
+    recipients: list[str] = []
+    seen: set[str] = set()
+    for addr in list(settings.email_recipients) + list(extra_recipients or []):
+        key = addr.lower().strip()
+        if key and key not in seen:
+            seen.add(key)
+            recipients.append(addr)
+
     msg = MIMEMultipart("related")
     msg["Subject"] = subject
     msg["From"] = settings.email_sender
-    msg["To"] = ", ".join(settings.email_recipients)
+    msg["To"] = ", ".join(recipients)
 
     msg_alt = MIMEMultipart("alternative")
     msg.attach(msg_alt)
@@ -56,7 +67,7 @@ async def send_agent_email(
             username=settings.smtp_username,
             password=settings.smtp_password,
             start_tls=True,
-            recipients=settings.email_recipients,
+            recipients=recipients,
         )
         logger.info(f"Agent email sent: {subject}")
     except Exception:
