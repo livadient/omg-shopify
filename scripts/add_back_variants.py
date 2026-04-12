@@ -47,7 +47,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("add_back_variants")
 
-STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+# Resolve STATIC_DIR from the app package (works whether the script is run
+# from scripts/ locally or copied to /tmp/ in the container).
+from app.main import STATIC_DIR  # noqa: E402
 
 
 async def _fetch_all_products() -> list[dict]:
@@ -239,9 +241,22 @@ async def _regenerate_mapping(product: dict, design_filename: str, dry_run: bool
     logger.info(f"  Mapping regenerated in product_mappings.json")
 
 
-async def migrate_product(product: dict, design_filename: str, dry_run: bool) -> bool:
+async def migrate_product(
+    product: dict, design_filename: str, dry_run: bool, mockups_only: bool = False,
+) -> bool:
     handle = product.get("handle", "?")
-    logger.info(f"[{handle}] starting migration (dry_run={dry_run})")
+    logger.info(f"[{handle}] starting migration (dry_run={dry_run}, mockups_only={mockups_only})")
+
+    if mockups_only:
+        # Skip schema change — assume product already has Placement + Back variants.
+        options_names = [(o.get("name") or "").lower() for o in product.get("options", [])]
+        if "placement" not in options_names:
+            logger.info(f"[{handle}] --mockups-only but product has no Placement yet — skip")
+            return False
+        await _generate_and_upload_back_mockups(product, design_filename, dry_run)
+        await _regenerate_mapping(product, design_filename, dry_run)
+        logger.info(f"[{handle}] mockups-only pass complete")
+        return True
 
     if not _is_unmigrated_tee(product):
         logger.info(f"[{handle}] already has Placement option or is not a tee — skip")
@@ -303,6 +318,10 @@ async def main():
     parser.add_argument("--dry-run", action="store_true", help="Report what would change without writing")
     parser.add_argument("--only", type=str, default=None, help="Restrict to a single product handle")
     parser.add_argument("--limit", type=int, default=None, help="Cap number of products migrated")
+    parser.add_argument(
+        "--mockups-only", action="store_true",
+        help="Skip schema change; only generate+upload back mockups for already-migrated products",
+    )
     args = parser.parse_args()
 
     if not settings.omg_shopify_admin_token:
@@ -313,8 +332,18 @@ async def main():
     all_products = await _fetch_all_products()
     logger.info(f"  {len(all_products)} products total")
 
-    tees = [p for p in all_products if _is_unmigrated_tee(p)]
-    logger.info(f"  {len(tees)} tees need migration")
+    if args.mockups_only:
+        # For mockups-only, we want ALL tees that already have Placement (so we can
+        # regenerate mockups / fix missing ones).
+        tees = [
+            p for p in all_products
+            if p.get("product_type") == "T-Shirt"
+            and "placement" in [(o.get("name") or "").lower() for o in p.get("options", [])]
+        ]
+        logger.info(f"  {len(tees)} migrated tees eligible for mockup refresh")
+    else:
+        tees = [p for p in all_products if _is_unmigrated_tee(p)]
+        logger.info(f"  {len(tees)} tees need migration")
 
     if args.only:
         tees = [p for p in tees if p.get("handle") == args.only]
@@ -327,7 +356,7 @@ async def main():
     migrated = 0
     for p in tees:
         design = _pick_design_filename(p)
-        ok = await migrate_product(p, design, args.dry_run)
+        ok = await migrate_product(p, design, args.dry_run, mockups_only=args.mockups_only)
         if ok:
             migrated += 1
 

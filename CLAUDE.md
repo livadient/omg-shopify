@@ -122,6 +122,17 @@ These links:
 - Pre-fill the checkout form with customer shipping details
 - Include Qstomizer properties (`_customorderid`, `_customorderkey`, `_customimagefront`, etc.) as cart attributes
 
+## Product Placement (Front / Back) Variants
+
+All t-shirts have three variant options: **Gender** (Male/Female), **Placement** (Front/Back), and **Size** — 24 variants per product. The Placement option lets customers order the same design printed on the front OR on the back of the tee at the same price. Selecting a variant on the product page swaps the gallery to the matching mockup (gender + placement), the same way the gender swap works.
+
+Implementation details:
+- **Schema**: `VARIANTS` in `shopify_product_creator.py` is a list comprehension over `(gender, placement, size)`. Shopify options: `[Gender, Placement, Size]`.
+- **Qstomizer**: our automation clicks the stage thumbnail (`#stagemini0` = front, `#stagemini1` = back) before uploading so the design lands on the correct canvas. `customize_and_add_to_cart(placement=...)` drives this.
+- **Mango approval**: `execute_approval` uploads 4 mockups per product (male/female × front/back) and links each to its variant subset via `variant_ids` on the Shopify image object.
+- **Webhook parser**: `app/main.py` handles both `"Male / Front / L"` (new) and `"Male / L"` (legacy) variant titles for backward compat.
+- **Migration**: `scripts/add_back_variants.py` was run once against all 18 standard tees on 2026-04-12 to add the Placement option and back mockups. Legacy color-based Astous male/female-limited tees were excluded (they use a different schema).
+
 ## Shipping Method Mapping
 
 OMG shipping methods are mapped to TShirtJunkies checkout options by country:
