@@ -128,11 +128,12 @@ OMG shipping methods are mapped to TShirtJunkies checkout options by country:
 
 | Country | OMG Method | OMG Price | TJ Match | TJ Price |
 |---------|-----------|-----------|----------|----------|
-| **CY** | Home Delivery | EUR 3.00 | Home Delivery | EUR 3.00 |
-| **GR** | Geniki Taxydromiki | EUR 5.00 | Geniki Taxydromiki pickup | EUR 5.00 |
+| **CY** | Home Delivery | EUR 4.50 | Home Delivery | EUR 3.00 |
+| **GR** | Geniki Taxydromiki | EUR 5.00 | Γενικής Ταχυδρομικής | EUR 5.00 |
+| **GR** | Home Delivery | EUR 10.00 | Παράδοσης κατ' οίκον | varies |
 | **FR** | Europe postal | EUR 6.00 | Postal Shipping | EUR 5.00 |
 
-Mapping is defined in `SHIPPING_METHOD_MAP` in `qstomizer_automation.py`. For CY, the automation actively selects Home Delivery. For GR and FR, the correct option is auto-selected (first/only option).
+Mapping is defined in `SHIPPING_METHOD_MAP` in `qstomizer_automation.py`. Values can be a single string (one option for the country) or a dict keyed by OMG method title (multiple options, chosen by what the customer picked on OMG). The customer's chosen OMG method is extracted from `shipping_lines[0].title` in the webhook payload and threaded through as `shipping["shipping_method"]`.
 
 ## Product Mappings
 

@@ -12,15 +12,23 @@ _playwright_executor = ThreadPoolExecutor(max_workers=2)
 # Map OMG shipping methods to TShirtJunkies checkout shipping options.
 # Key: country code -> preferred TJ shipping method name (substring match on label text).
 # TJ checkout shows shipping options after address is filled; we pick the best match.
+# Values are either a string (single method for that country) or a dict mapping
+# OMG shipping method title → TJ method substring. "_default" is used when the
+# OMG method title is unknown.
 #
-# OMG EU edition profile -> TJ checkout:
-#   CY: Home Delivery EUR 3   -> TJ: Home Delivery EUR 3 (must select; not first)
-#   GR: Geniki Taxydromiki EUR 5 -> TJ: Geniki pickup EUR 5 (auto-selected, first option)
-#   FR: Europe postal EUR 6   -> TJ: Postal Shipping EUR 5 (auto-selected, only option)
+# OMG → TJ:
+#   CY: Home Delivery EUR 4.50 → TJ: Home Delivery
+#   GR: Geniki Taxydromiki EUR 5 → TJ: Γενικής Ταχυδρομικής
+#   GR: Home Delivery EUR 10 → TJ: Παράδοσης κατ' οίκον
+#   FR: EU Flat Rate EUR 4.79 → TJ: Postal
 SHIPPING_METHOD_MAP = {
     "CY": "Home Delivery",
-    "GR": "Geniki",             # first option, auto-selected
-    "FR": "Postal",             # only option, auto-selected
+    "GR": {
+        "Geniki Taxydromiki": "Γενικής",
+        "Home Delivery": "κατ' οίκον",
+        "_default": "Γενικής",
+    },
+    "FR": "Postal",
 }
 # Fallback: keep the default (first/cheapest) option for unmapped countries
 
@@ -467,17 +475,31 @@ async def _fill_checkout(page, shipping: dict) -> None:
     await page.keyboard.press("Tab")
     await page.wait_for_timeout(2000)
 
-    # Select shipping method based on country
+    # Select shipping method based on country + OMG-selected method
     if country_code:
-        await _select_shipping_method(page, country_code)
+        await _select_shipping_method(
+            page, country_code, shipping.get("shipping_method", "")
+        )
 
     print("Shipping details filled (stopping before payment)")
 
 
-async def _select_shipping_method(page, country_code: str) -> None:
-    """Select the appropriate shipping method at TJ checkout based on country."""
-    preferred = SHIPPING_METHOD_MAP.get(country_code, "")
-    print(f"  Selecting shipping method for {country_code} (preferred: {preferred or 'cheapest'})...")
+async def _select_shipping_method(page, country_code: str, omg_method: str = "") -> None:
+    """Select the appropriate shipping method at TJ checkout.
+
+    Looks up SHIPPING_METHOD_MAP[country_code]; if the value is a dict, uses
+    omg_method (the shipping method title from the OMG order) to pick the
+    matching TJ substring. If no match, falls back to _default.
+    """
+    entry = SHIPPING_METHOD_MAP.get(country_code, "")
+    if isinstance(entry, dict):
+        preferred = entry.get(omg_method) or entry.get("_default", "")
+    else:
+        preferred = entry
+    print(
+        f"  Selecting shipping method for {country_code} "
+        f"(omg={omg_method or 'unknown'} → tj preferred={preferred or 'cheapest'})..."
+    )
 
     # Wait for actual shipping method options to appear (not Ship/Pickup toggle)
     shipping_found = False

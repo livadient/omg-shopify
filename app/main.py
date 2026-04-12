@@ -373,6 +373,11 @@ async def _process_order_background(
         # Extract shipping details from order
         shipping_address = order.get("shipping_address") or {}
         customer = order.get("customer", {})
+        # Extract the shipping method the customer chose on OMG, so we can
+        # pick the matching method on TJ (some countries have >1 option).
+        shipping_lines = order.get("shipping_lines") or []
+        omg_shipping_method = (shipping_lines[0].get("title", "") if shipping_lines else "")
+
         shipping = {
             "email": settings.email_sender,
             "first_name": shipping_address.get("first_name", ""),
@@ -383,6 +388,7 @@ async def _process_order_background(
             "country_code": shipping_address.get("country_code", ""),
             "zip": shipping_address.get("zip", ""),
             "phone": shipping_address.get("phone", ""),
+            "shipping_method": omg_shipping_method,
         }
 
         try:
