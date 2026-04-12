@@ -128,11 +128,11 @@ OMG shipping methods are mapped to TShirtJunkies checkout options by country:
 
 | Country | OMG Method | OMG Price | TJ Match | TJ Price |
 |---------|-----------|-----------|----------|----------|
-| **CY** | Travel Express | EUR 3.00 | Travel Express pickup | EUR 3.00 |
+| **CY** | Home Delivery | EUR 3.00 | Home Delivery | EUR 3.00 |
 | **GR** | Geniki Taxydromiki | EUR 5.00 | Geniki Taxydromiki pickup | EUR 5.00 |
 | **FR** | Europe postal | EUR 6.00 | Postal Shipping | EUR 5.00 |
 
-Mapping is defined in `SHIPPING_METHOD_MAP` in `qstomizer_automation.py`. For CY, the automation actively selects Travel Express. For GR and FR, the correct option is auto-selected (first/only option).
+Mapping is defined in `SHIPPING_METHOD_MAP` in `qstomizer_automation.py`. For CY, the automation actively selects Home Delivery. For GR and FR, the correct option is auto-selected (first/only option).
 
 ## Product Mappings
 

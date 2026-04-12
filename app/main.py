@@ -172,7 +172,7 @@ TEST_WEBHOOK_HTML = """
     </form>
     <p class="hint">This posts a fake order to <code>/webhook/order-created</code> using real variant IDs
        from your mappings. Playwright will run and you'll get an email.
-       <br>Shipping method will be auto-selected: CY=Travel Express, GR=Geniki Taxydromiki, FR=Postal.</p>
+       <br>Shipping method will be auto-selected: CY=Home Delivery, GR=Geniki Taxydromiki, FR=Postal.</p>
     <div id="status"></div>
     <script>
         const VARIANT_MAP = %VARIANT_MAP%;

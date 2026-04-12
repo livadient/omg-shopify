@@ -14,11 +14,11 @@ _playwright_executor = ThreadPoolExecutor(max_workers=2)
 # TJ checkout shows shipping options after address is filled; we pick the best match.
 #
 # OMG EU edition profile -> TJ checkout:
-#   CY: Travel Express EUR 3  -> TJ: Travel Express EUR 3 (must select; not first)
+#   CY: Home Delivery EUR 3   -> TJ: Home Delivery EUR 3 (must select; not first)
 #   GR: Geniki Taxydromiki EUR 5 -> TJ: Geniki pickup EUR 5 (auto-selected, first option)
 #   FR: Europe postal EUR 6   -> TJ: Postal Shipping EUR 5 (auto-selected, only option)
 SHIPPING_METHOD_MAP = {
-    "CY": "Travel Express",
+    "CY": "Home Delivery",
     "GR": "Geniki",             # first option, auto-selected
     "FR": "Postal",             # only option, auto-selected
 }
