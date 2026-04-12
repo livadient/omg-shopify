@@ -95,24 +95,28 @@ TSHIRT_METAFIELDS = [
     },
 ]
 
-# Variants: Gender x Size with pricing
-# Male sizes S-5XL, Female sizes S-XL
-# inventory_management=null means Shopify won't track stock (always available) — correct for print-on-demand
+# Variants: Gender x Placement x Size with pricing
+# Male sizes S-5XL, Female sizes S-XL; each duplicated for Front/Back placement.
+# 24 variants total (under Shopify's 100-variant limit).
+# inventory_management="shopify" + policy="continue" keeps them always purchasable (print-on-demand).
+_SIZE_PRICES = {
+    "Male": [("S", "25.00"), ("M", "25.00"), ("L", "25.00"), ("XL", "25.00"),
+             ("2XL", "35.00"), ("3XL", "37.00"), ("4XL", "39.50"), ("5XL", "39.50")],
+    "Female": [("S", "25.00"), ("M", "25.00"), ("L", "25.00"), ("XL", "25.00")],
+}
+
 VARIANTS = [
-    # Male — inventory_management="shopify" so we can set stock levels; policy="continue" as fallback
-    {"option1": "Male", "option2": "S", "price": "25.00", "inventory_management": "shopify", "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "M", "price": "25.00", "inventory_management": "shopify", "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "L", "price": "25.00", "inventory_management": "shopify", "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "XL", "price": "25.00", "inventory_management": "shopify", "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "2XL", "price": "35.00", "inventory_management": "shopify", "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "3XL", "price": "37.00", "inventory_management": "shopify", "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "4XL", "price": "39.50", "inventory_management": "shopify", "inventory_policy": "continue"},
-    {"option1": "Male", "option2": "5XL", "price": "39.50", "inventory_management": "shopify", "inventory_policy": "continue"},
-    # Female
-    {"option1": "Female", "option2": "S", "price": "25.00", "inventory_management": "shopify", "inventory_policy": "continue"},
-    {"option1": "Female", "option2": "M", "price": "25.00", "inventory_management": "shopify", "inventory_policy": "continue"},
-    {"option1": "Female", "option2": "L", "price": "25.00", "inventory_management": "shopify", "inventory_policy": "continue"},
-    {"option1": "Female", "option2": "XL", "price": "25.00", "inventory_management": "shopify", "inventory_policy": "continue"},
+    {
+        "option1": gender,
+        "option2": placement,
+        "option3": size,
+        "price": price,
+        "inventory_management": "shopify",
+        "inventory_policy": "continue",
+    }
+    for gender in ("Male", "Female")
+    for placement in ("Front", "Back")
+    for size, price in _SIZE_PRICES[gender]
 ]
 
 # TShirtJunkies target product IDs for mapping
@@ -165,7 +169,7 @@ async def create_product(
             "product_type": "T-Shirt",
             "tags": tags,
             "published": published,
-            "options": [{"name": "Gender"}, {"name": "Size"}],
+            "options": [{"name": "Gender"}, {"name": "Placement"}, {"name": "Size"}],
             "variants": variants,
         }
     }
@@ -483,20 +487,28 @@ async def create_mappings_for_product(
     omg_product: dict,
     design_image: str = "front_design.png",
 ) -> list[dict]:
-    """Create TWO product mappings: male variants → TJ Classic Tee, female variants → TJ Women's Tee.
+    """Create product mappings: male variants → TJ Classic Tee, female → TJ Women's Tee.
 
-    OMG product has Gender+Size options (e.g. "Male / L", "Female / S").
-    Each gender maps to a different TJ product.
+    Handles both the legacy 2-option schema (Gender + Size — option1, option2) and
+    the new 3-option schema (Gender + Placement + Size — option1, option2, option3).
+    Placement is encoded in the source_title so the webhook handler can thread it
+    through to Qstomizer.
     """
     from app.mapper import load_mappings, save_mappings
     from app.models import ProductMapping, VariantMapping
     from app.shopify_client import fetch_product_by_handle
 
+    # Detect schema: new 3-option products have option2 = "Front"/"Back"
+    has_placement = any(
+        (v.get("option2") or "").lower() in ("front", "back")
+        for v in omg_product.get("variants", [])
+    )
+
     # Group OMG variants by gender
     male_variants = []
     female_variants = []
     for v in omg_product.get("variants", []):
-        gender = v.get("option1", "").lower()
+        gender = (v.get("option1") or "").lower()
         if "female" in gender:
             female_variants.append(v)
         else:
@@ -518,17 +530,25 @@ async def create_mappings_for_product(
             logger.warning(f"Could not fetch TJ product: {tj_info['handle']}")
             continue
 
-        # Match by size (option2 on OMG, option1 on TJ)
+        # TJ variants are keyed by size (option1 on TJ)
         tj_by_size = {v.get("option1", ""): v for v in tj_product.get("variants", [])}
 
         variant_mappings = []
         for omg_v in omg_variants:
-            size = omg_v.get("option2", "")
+            if has_placement:
+                placement = omg_v.get("option2", "Front")
+                size = omg_v.get("option3", "")
+                source_title = f"{omg_v.get('option1', '')} / {placement} / {size}"
+            else:
+                placement = None
+                size = omg_v.get("option2", "")
+                source_title = f"{omg_v.get('option1', '')} / {size}"
+
             tj_v = tj_by_size.get(size)
             if tj_v:
                 variant_mappings.append(VariantMapping(
                     source_variant_id=omg_v["id"],
-                    source_title=f"{omg_v.get('option1', '')} / {size}",
+                    source_title=source_title,
                     target_variant_id=tj_v["id"],
                     target_title=size,
                     target_price=str(tj_v.get("price", "0")),
@@ -544,7 +564,11 @@ async def create_mappings_for_product(
             design_image=design_image,
         )
         mappings.append(mapping)
-        logger.info(f"Mapping: {omg_product['handle']} ({gender}) → {tj_info['handle']} ({len(variant_mappings)} variants)")
+        logger.info(
+            f"Mapping: {omg_product['handle']} ({gender}"
+            f"{', with placement' if has_placement else ''}) "
+            f"→ {tj_info['handle']} ({len(variant_mappings)} variants)"
+        )
 
     # Save mappings — replace any existing ones for the same source+target handle pair
     config = load_mappings()
@@ -563,6 +587,7 @@ async def fetch_mockup_from_qstomizer(
     design_image_path: str,
     product_type: str = "male",
     size: str = "L",
+    placement: str = "front",
 ) -> str | None:
     """Run Qstomizer automation and return the mockup image URL.
 
@@ -579,10 +604,11 @@ async def fetch_mockup_from_qstomizer(
             image_path=design_image_path,
             quantity=1,
             headless=True,
+            placement=placement,
         )
         mockup_url = result.get("mockup_url")
         if mockup_url:
-            logger.info(f"Got {product_type} mockup: {mockup_url}")
+            logger.info(f"Got {product_type} {placement} mockup: {mockup_url}")
         return mockup_url
     except Exception as e:
         logger.error(f"Failed to get {product_type} mockup: {e}")

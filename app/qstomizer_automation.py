@@ -71,9 +71,14 @@ async def customize_and_add_to_cart(
     quantity: int = 1,
     headless: bool = False,
     shipping: dict | None = None,
+    placement: str = "front",
 ) -> str:
     """Open Qstomizer, upload design, select color and size, add to cart,
     and optionally fill in checkout shipping details.
+
+    Args:
+        placement: "front" (default) or "back" — switches Qstomizer's canvas
+            view before uploading so the design is placed on the correct side.
 
     Runs Playwright in a separate thread with ProactorEventLoop on Windows
     to avoid uvicorn's SelectorEventLoop subprocess limitation.
@@ -90,6 +95,7 @@ async def customize_and_add_to_cart(
             quantity=quantity,
             headless=headless,
             shipping=shipping,
+            placement=placement,
         ),
     )
 
@@ -102,6 +108,7 @@ async def _customize_and_add_to_cart_impl(
     quantity: int = 1,
     headless: bool = False,
     shipping: dict | None = None,
+    placement: str = "front",
 ) -> str:
     """Actual Playwright implementation."""
     image_path = Path(image_path).resolve()
@@ -194,6 +201,24 @@ async def _customize_and_add_to_cart_impl(
         print(f"  Active color: {active_color}")
 
         import time
+
+        # --- Step 0b: Switch canvas view to front/back before uploading ---
+        # Qstomizer exposes stage thumbnails (#stagemini0 = front, #stagemini1 = back, etc.)
+        # Clicking a thumbnail activates the corresponding print area canvas, so the
+        # next file upload is placed on that side.
+        stage_id = 1 if (placement or "front").lower() == "back" else 0
+        print(f"Switching to stage {stage_id} ({placement or 'front'} view)...")
+        stage_result = await qf.evaluate(f"""
+            () => {{
+                const el = document.getElementById('stagemini{stage_id}');
+                if (!el) return 'no_stage_{stage_id}';
+                if (typeof jQuery !== 'undefined') jQuery(el).trigger('click');
+                else el.click();
+                return 'clicked_stage_{stage_id}';
+            }}
+        """)
+        print(f"  {stage_result}")
+        await page.wait_for_timeout(1500)
 
         # --- Step 1: Upload the design image ---
         print(f"Uploading design: {image_path.name}")

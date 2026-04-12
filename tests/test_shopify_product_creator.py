@@ -18,32 +18,56 @@ from app.shopify_product_creator import (
 
 class TestVariantsConstant:
     def test_total_count(self):
-        assert len(VARIANTS) == 12  # 8 male + 4 female
+        # 3 options now: Gender × Placement × Size = 2 × 2 × (8+4) = 24
+        assert len(VARIANTS) == 24
 
     def test_male_variants_count(self):
+        # 8 sizes × 2 placements = 16
         male = [v for v in VARIANTS if v["option1"] == "Male"]
-        assert len(male) == 8
+        assert len(male) == 16
 
     def test_female_variants_count(self):
+        # 4 sizes × 2 placements = 8
         female = [v for v in VARIANTS if v["option1"] == "Female"]
-        assert len(female) == 4
+        assert len(female) == 8
+
+    def test_placements_front_and_back(self):
+        placements = {v["option2"] for v in VARIANTS}
+        assert placements == {"Front", "Back"}
 
     def test_all_have_shopify_inventory_management(self):
         for v in VARIANTS:
             assert v["inventory_management"] == "shopify"
 
     def test_male_sizes(self):
-        male_sizes = [v["option2"] for v in VARIANTS if v["option1"] == "Male"]
-        assert male_sizes == ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]
+        sizes = []
+        seen = set()
+        for v in VARIANTS:
+            if v["option1"] == "Male" and v["option3"] not in seen:
+                sizes.append(v["option3"])
+                seen.add(v["option3"])
+        assert sizes == ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]
 
     def test_female_sizes(self):
-        female_sizes = [v["option2"] for v in VARIANTS if v["option1"] == "Female"]
-        assert female_sizes == ["S", "M", "L", "XL"]
+        sizes = []
+        seen = set()
+        for v in VARIANTS:
+            if v["option1"] == "Female" and v["option3"] not in seen:
+                sizes.append(v["option3"])
+                seen.add(v["option3"])
+        assert sizes == ["S", "M", "L", "XL"]
 
     def test_all_have_price(self):
         for v in VARIANTS:
             assert "price" in v
             assert float(v["price"]) > 0
+
+    def test_front_and_back_same_price(self):
+        """Back variant should cost the same as Front for any gender/size."""
+        by_key = {(v["option1"], v["option3"], v["option2"]): v["price"] for v in VARIANTS}
+        for (gender, size, placement), price in by_key.items():
+            other = "Back" if placement == "Front" else "Front"
+            assert by_key[(gender, size, other)] == price
 
 
 class TestTJProducts:

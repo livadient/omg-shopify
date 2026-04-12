@@ -137,19 +137,21 @@ def _build_system_prompt() -> str:
     )
 
 
-def _mockup_order(target_audience: str) -> list[tuple[str, str, str]]:
-    """Return (ptype, size, label) tuples in upload order.
+def _mockup_order(target_audience: str) -> list[tuple[str, str, str, str]]:
+    """Return (ptype, size, placement, label) tuples in upload order.
 
-    The targeted gender's mockup is uploaded first so it appears as the
+    The targeted gender's FRONT mockup is uploaded first so it appears as the
     main product image in the storefront gallery. Female-targeted designs
     (e.g. the feminine concept type) put the female mockup first; everything
-    else defaults to male-first (current historical behavior).
+    else defaults to male-first. Within each gender, front comes before back.
     """
-    male = ("male", "L", "Male")
-    female = ("female", "M", "Female")
+    male_front = ("male", "L", "front", "Male Front")
+    male_back = ("male", "L", "back", "Male Back")
+    female_front = ("female", "M", "front", "Female Front")
+    female_back = ("female", "M", "back", "Female Back")
     if (target_audience or "").lower() == "female":
-        return [female, male]
-    return [male, female]
+        return [female_front, female_back, male_front, male_back]
+    return [male_front, male_back, female_front, female_back]
 
 
 # Backwards-compatible alias for any imports/tests still referencing SYSTEM_PROMPT
@@ -339,27 +341,39 @@ Be specific in the design description so an AI image generator can create it acc
 async def _precache_mockups(design_image_path: str, concept_name: str) -> dict:
     """Pre-generate TShirtJunkies mockups via Qstomizer so approval is near-instant.
 
-    Returns dict with cached mockup file paths for male and female.
+    Generates 4 mockups: male×front, male×back, female×front, female×back.
+    Returns nested dict keyed by gender then placement:
+        {"male": {"front": {"url": ..., "path": ...}, "back": {...}},
+         "female": {"front": {...}, "back": {...}}}
     """
     from app.shopify_product_creator import fetch_mockup_from_qstomizer, download_image
 
-    cached = {}
+    cached: dict = {"male": {}, "female": {}}
     proposals_dir = STATIC_DIR / "proposals"
     proposals_dir.mkdir(exist_ok=True)
 
-    for ptype, size in [("male", "L"), ("female", "M")]:
+    combos = [
+        ("male", "L", "front"),
+        ("male", "L", "back"),
+        ("female", "M", "front"),
+        ("female", "M", "back"),
+    ]
+    for ptype, size, placement in combos:
         try:
-            logger.info(f"Pre-caching {ptype} mockup for '{concept_name}'...")
-            mockup_url = await fetch_mockup_from_qstomizer(design_image_path, ptype, size)
+            logger.info(f"Pre-caching {ptype} {placement} mockup for '{concept_name}'...")
+            mockup_url = await fetch_mockup_from_qstomizer(
+                design_image_path, ptype, size, placement=placement,
+            )
             if mockup_url:
-                # Download and save locally so it survives across sessions
-                filename = f"mockup_cache_{Path(design_image_path).stem}_{ptype}.png"
+                filename = f"mockup_cache_{Path(design_image_path).stem}_{ptype}_{placement}.png"
                 local_path = proposals_dir / filename
                 await download_image(mockup_url, local_path)
-                cached[ptype] = {"url": mockup_url, "path": str(local_path)}
-                logger.info(f"Cached {ptype} mockup: {local_path}")
+                cached[ptype][placement] = {"url": mockup_url, "path": str(local_path)}
+                logger.info(f"Cached {ptype} {placement} mockup: {local_path}")
         except Exception as e:
-            logger.warning(f"Failed to pre-cache {ptype} mockup for '{concept_name}': {e}")
+            logger.warning(
+                f"Failed to pre-cache {ptype} {placement} mockup for '{concept_name}': {e}"
+            )
 
     return cached
 
@@ -491,32 +505,36 @@ async def execute_approval(proposal_id: str, version: str = "original") -> dict:
         design_image=design_filename,
     )
 
-    # Upload images in order: 1) Primary-gender mockup, 2) Other-gender mockup, 3) Design artwork.
-    # Female-targeted concepts (e.g. "feminine" type) put the female mockup first so
-    # it appears as the main image in the storefront gallery; everything else stays
-    # male-first as before.
-    # Use pre-cached mockups only if approving nobg (they were generated from nobg).
-    # For "original" approval, regenerate mockups from the original design.
+    # Upload 4 mockups: male×front, male×back, female×front, female×back.
+    # The primary-gender's FRONT mockup goes first so it's the main product image.
+    # Each mockup gets linked to its (gender, placement) variant subset so the
+    # gallery swaps automatically when the customer picks e.g. Female / Back.
     cached_mockups = data.get("cached_mockups", {}) if version == "nobg" else {}
     design_path = str(STATIC_DIR / design_filename)
     upload_order = _mockup_order(data.get("target_audience", ""))
     logger.info(
-        f"Mockup upload order: {[label for _, _, label in upload_order]} "
+        f"Mockup upload order: {[label for _, _, _, label in upload_order]} "
         f"(target_audience={data.get('target_audience', 'unisex')})"
     )
 
-    # Group variant IDs by gender so each mockup can be linked to its variants —
-    # picking a Female variant on the product page swaps the gallery to the female mockup.
-    variant_ids_by_gender: dict[str, list[int]] = {"male": [], "female": []}
+    # Group variant IDs by (gender, placement) so each mockup links to its subset.
+    # Products now have 3 options: option1=Gender, option2=Placement, option3=Size.
+    # Legacy products (2 options) would have no placement — skip them here since
+    # this code path only runs for newly-created 3-option products.
+    variant_ids_by_key: dict[tuple[str, str], list[int]] = {
+        ("male", "front"): [], ("male", "back"): [],
+        ("female", "front"): [], ("female", "back"): [],
+    }
     for v in product.get("variants", []):
         gender = (v.get("option1") or "").lower()
-        if "female" in gender:
-            variant_ids_by_gender["female"].append(v["id"])
-        elif "male" in gender:
-            variant_ids_by_gender["male"].append(v["id"])
+        placement = (v.get("option2") or "").lower()
+        gkey = "female" if "female" in gender else ("male" if "male" in gender else None)
+        pkey = "back" if placement == "back" else ("front" if placement == "front" else None)
+        if gkey and pkey:
+            variant_ids_by_key[(gkey, pkey)].append(v["id"])
 
-    for ptype, size, label in upload_order:
-        cached = cached_mockups.get(ptype, {})
+    for ptype, size, placement, label in upload_order:
+        cached = cached_mockups.get(ptype, {}).get(placement, {}) if isinstance(cached_mockups.get(ptype), dict) else {}
         cached_path = Path(cached["path"]) if cached.get("path") else None
 
         if cached_path and cached_path.exists():
@@ -524,23 +542,26 @@ async def execute_approval(proposal_id: str, version: str = "original") -> dict:
             mockup_path = cached_path
         else:
             logger.info(f"Fetching {label} mockup from TShirtJunkies (version={version})...")
-            mockup_url = await fetch_mockup_from_qstomizer(design_path, ptype, size)
+            mockup_url = await fetch_mockup_from_qstomizer(
+                design_path, ptype, size, placement=placement,
+            )
             if not mockup_url:
                 continue
-            mockup_path = STATIC_DIR / "proposals" / f"mockup_{handle}_{ptype}.png"
+            mockup_path = STATIC_DIR / "proposals" / f"mockup_{handle}_{ptype}_{placement}.png"
             mockup_path.parent.mkdir(exist_ok=True)
             await download_image(mockup_url, mockup_path)
 
         try:
+            target_variants = variant_ids_by_key.get((ptype, placement)) or None
             await upload_product_image(
                 product_id,
                 mockup_path,
                 alt=f"{label} T-Shirt Mockup",
-                variant_ids=variant_ids_by_gender.get(ptype) or None,
+                variant_ids=target_variants,
             )
             logger.info(
                 f"Uploaded {label} mockup to product {product_id} "
-                f"(linked to {len(variant_ids_by_gender.get(ptype) or [])} {ptype} variants)"
+                f"(linked to {len(target_variants or [])} {ptype}/{placement} variants)"
             )
         except Exception as e:
             logger.warning(f"Failed to upload {label} mockup: {e}")

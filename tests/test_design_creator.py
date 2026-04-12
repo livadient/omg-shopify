@@ -34,33 +34,43 @@ class TestGetSeason:
 
 
 class TestMockupOrder:
-    """Female-targeted concepts must put the female mockup first so it
-    appears as the main image in the storefront gallery."""
+    """The primary-audience gender's FRONT mockup must be uploaded first so it
+    appears as the main image in the storefront gallery. Within each gender,
+    front comes before back. Returns 4 tuples: (ptype, size, placement, label)."""
 
-    def test_female_target_puts_female_first(self):
+    def test_female_target_puts_female_front_first(self):
         order = _mockup_order("female")
-        labels = [label for _, _, label in order]
-        assert labels == ["Female", "Male"]
+        labels = [label for _, _, _, label in order]
+        assert labels == ["Female Front", "Female Back", "Male Front", "Male Back"]
 
-    def test_male_target_keeps_male_first(self):
+    def test_male_target_keeps_male_front_first(self):
         order = _mockup_order("male")
-        labels = [label for _, _, label in order]
-        assert labels == ["Male", "Female"]
+        labels = [label for _, _, _, label in order]
+        assert labels == ["Male Front", "Male Back", "Female Front", "Female Back"]
 
     def test_unisex_defaults_to_male_first(self):
         order = _mockup_order("unisex")
-        labels = [label for _, _, label in order]
-        assert labels == ["Male", "Female"]
+        labels = [label for _, _, _, label in order]
+        assert labels == ["Male Front", "Male Back", "Female Front", "Female Back"]
 
     def test_empty_target_defaults_to_male_first(self):
         order = _mockup_order("")
-        labels = [label for _, _, label in order]
-        assert labels == ["Male", "Female"]
+        labels = [label for _, _, _, label in order]
+        assert labels == ["Male Front", "Male Back", "Female Front", "Female Back"]
 
     def test_case_insensitive(self):
         order = _mockup_order("FEMALE")
-        labels = [label for _, _, label in order]
-        assert labels == ["Female", "Male"]
+        labels = [label for _, _, _, label in order]
+        assert labels == ["Female Front", "Female Back", "Male Front", "Male Back"]
+
+    def test_tuples_have_placement_field(self):
+        """Each tuple is (ptype, size, placement, label) — 4 fields."""
+        order = _mockup_order("male")
+        for t in order:
+            assert len(t) == 4
+            ptype, size, placement, label = t
+            assert ptype in ("male", "female")
+            assert placement in ("front", "back")
 
 
 class TestBuildSystemPrompt:
@@ -208,8 +218,14 @@ class TestExecuteApprovalVersion:
             "suggested_title": "Test Tee",
             "suggested_tags": "test",
             "cached_mockups": {
-                "male": {"url": "http://example.com/male.png", "path": str(fake_image)},
-                "female": {"url": "http://example.com/female.png", "path": str(fake_image)},
+                "male": {
+                    "front": {"url": "http://example.com/male_front.png", "path": str(fake_image)},
+                    "back": {"url": "http://example.com/male_back.png", "path": str(fake_image)},
+                },
+                "female": {
+                    "front": {"url": "http://example.com/female_front.png", "path": str(fake_image)},
+                    "back": {"url": "http://example.com/female_back.png", "path": str(fake_image)},
+                },
             },
         }
 
@@ -242,11 +258,15 @@ class TestExecuteApprovalVersion:
         fake_image = proposals_dir / "design_test.png"
         fake_image.write_bytes(b"fake png data")
 
-        # Create cached mockup files that exist
-        cached_male = proposals_dir / "mockup_male.png"
-        cached_male.write_bytes(b"male mockup")
-        cached_female = proposals_dir / "mockup_female.png"
-        cached_female.write_bytes(b"female mockup")
+        # Create cached mockup files that exist (4 combos now: gender × placement)
+        cached_male_front = proposals_dir / "mockup_male_front.png"
+        cached_male_front.write_bytes(b"male front mockup")
+        cached_male_back = proposals_dir / "mockup_male_back.png"
+        cached_male_back.write_bytes(b"male back mockup")
+        cached_female_front = proposals_dir / "mockup_female_front.png"
+        cached_female_front.write_bytes(b"female front mockup")
+        cached_female_back = proposals_dir / "mockup_female_back.png"
+        cached_female_back.write_bytes(b"female back mockup")
 
         proposal_data = {
             "name": "Test Design",
@@ -256,8 +276,14 @@ class TestExecuteApprovalVersion:
             "suggested_title": "Test Tee",
             "suggested_tags": "test",
             "cached_mockups": {
-                "male": {"url": "http://example.com/male.png", "path": str(cached_male)},
-                "female": {"url": "http://example.com/female.png", "path": str(cached_female)},
+                "male": {
+                    "front": {"url": "http://example.com/male_front.png", "path": str(cached_male_front)},
+                    "back": {"url": "http://example.com/male_back.png", "path": str(cached_male_back)},
+                },
+                "female": {
+                    "front": {"url": "http://example.com/female_front.png", "path": str(cached_female_front)},
+                    "back": {"url": "http://example.com/female_back.png", "path": str(cached_female_back)},
+                },
             },
         }
 

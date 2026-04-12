@@ -362,9 +362,18 @@ async def _process_order_background(
         source_handle = handle_map.get(item["source_variant_id"], "")
         variant_title = item["variant_title"]
 
-        # Handle both old format ("L") and new Gender+Size format ("Male / L")
+        # Parse variant title. Supported formats:
+        #   "Male / Front / L"  (new 3-option schema: Gender / Placement / Size)
+        #   "Male / L"          (legacy 2-option schema: Gender / Size)
+        #   "L"                 (oldest legacy: Size only)
+        placement = "front"
         if " / " in variant_title:
-            gender_str, size = variant_title.split(" / ", 1)
+            parts = [p.strip() for p in variant_title.split(" / ")]
+            if len(parts) >= 3:
+                gender_str, placement_str, size = parts[0], parts[1], parts[2]
+                placement = "back" if placement_str.lower() == "back" else "front"
+            else:
+                gender_str, size = parts[0], parts[1]
             product_type = "female" if "female" in gender_str.lower() else "male"
         else:
             product_type = "female" if "female" in source_handle else "male"
@@ -404,6 +413,7 @@ async def _process_order_background(
                 quantity=item["quantity"],
                 headless=True,
                 shipping=shipping,
+                placement=placement,
             )
             item["cart_url"] = result["checkout_url"]
             item["mockup_url"] = result.get("mockup_url")
