@@ -78,8 +78,13 @@ async def verify_mockup_matches_design(mockup_url: str, design_path: Path) -> di
                     {"type": "text", "text": (
                         "Image 1 is our original design artwork. "
                         "Image 2 is a t-shirt mockup that should show the same design printed on it. "
-                        "Do they show the SAME design? Ignore the t-shirt itself, background color, "
-                        "and mockup framing — just compare the artwork/graphic/text. "
+                        "Do they show the SAME design? Focus on whether the core artwork, "
+                        "graphic elements, and text CONTENT are identical. "
+                        "IGNORE these normal mockup differences: smaller scale, different positioning "
+                        "on the shirt, slight detail loss at reduced size, cropping of edges, "
+                        "color saturation shifts from printing. "
+                        "Flag as NOT matching ONLY if: completely different artwork, wrong/garbled text, "
+                        "a different design entirely, or major missing graphic elements. "
                         "Respond in JSON: {\"match\": true/false, \"details\": \"brief explanation\"}"
                     )},
                     {"type": "image", "source": {"type": "base64", "media_type": design_mime, "data": design_b64}},
