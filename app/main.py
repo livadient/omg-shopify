@@ -69,7 +69,7 @@ async def verify_mockup_matches_design(mockup_url: str, design_path: Path) -> di
         api_client = llm_client._get_client()
         response = await llm_client._create_with_retry(
             api_client,
-            model="claude-haiku-3-20240307",
+            model="claude-haiku-4-5-20251001",
             max_tokens=300,
             temperature=0,
             messages=[{
