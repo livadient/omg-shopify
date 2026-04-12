@@ -532,54 +532,55 @@ async def _select_shipping_method(page, country_code: str, omg_method: str = "")
 
     # List available shipping methods and select preferred one
     # Skip: Ship/Pickup toggle, payment methods, non-shipping radios
-    result = await page.evaluate(f"""
-        () => {{
-            const preferred = '{preferred}'.toLowerCase();
+    # Pass preferred as an argument (safe against quotes/unicode in the string).
+    result = await page.evaluate("""
+        (preferredRaw) => {
+            const preferred = (preferredRaw || '').toLowerCase();
             const skip = ['ship', 'pickup', 'credit', 'paypal', 'card', 'viva'];
             const skipIds = ['SHIPPING', 'PICK_UP'];
             const methods = [];
 
             const radios = document.querySelectorAll('input[type="radio"]');
-            for (const radio of radios) {{
+            for (const radio of radios) {
                 if (skipIds.includes(radio.id)) continue;
                 const label = document.querySelector('label[for="' + radio.id + '"]');
                 if (!label) continue;
                 const text = label.textContent.trim();
                 if (skip.some(s => text.toLowerCase() === s || text.toLowerCase().includes('credit')))
                     continue;
-                methods.push({{id: radio.id, text: text, el: radio}});
-            }}
+                methods.push({id: radio.id, text: text, el: radio});
+            }
 
             // Also check role="radio" elements (newer Shopify checkout)
             const roleRadios = document.querySelectorAll('[role="radio"]');
-            for (const rr of roleRadios) {{
+            for (const rr of roleRadios) {
                 const text = rr.textContent.trim();
                 if (skip.some(s => text.toLowerCase() === s)) continue;
                 if (text.includes('Credit') || text.includes('PayPal') || text.includes('Viva')) continue;
-                if (!methods.some(m => m.text === text)) {{
-                    methods.push({{id: rr.id, text: text, el: rr}});
-                }}
-            }}
+                if (!methods.some(m => m.text === text)) {
+                    methods.push({id: rr.id, text: text, el: rr});
+                }
+            }
 
             if (methods.length === 0) return 'no_shipping_methods (may be auto-selected)';
 
             const listing = methods.map(m => m.text.substring(0, 60)).join(' | ');
 
             // Try to match preferred method
-            if (preferred) {{
-                for (const m of methods) {{
-                    if (m.text.toLowerCase().includes(preferred)) {{
+            if (preferred) {
+                for (const m of methods) {
+                    if (m.text.toLowerCase().includes(preferred)) {
                         m.el.click();
                         return 'selected: ' + m.text.substring(0, 80) + ' [from: ' + listing + ']';
-                    }}
-                }}
-            }}
+                    }
+                }
+            }
 
             // Fallback: pick first (usually cheapest)
             methods[0].el.click();
             return 'fallback: ' + methods[0].text.substring(0, 80) + ' [from: ' + listing + ']';
-        }}
-    """)
+        }
+    """, preferred)
     print(f"  Shipping: {result.encode('ascii', 'replace').decode()}")
 
 
