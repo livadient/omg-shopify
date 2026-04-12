@@ -1106,6 +1106,21 @@ async def translation_check():
     }
 
 
+@app.post("/agents/design-qa/run")
+async def design_qa_run():
+    """Manually trigger Argus design QA checker."""
+    from app.agents.design_qa import run_design_qa
+    result = await run_design_qa()
+    return {
+        "status": "done",
+        "passed": result["passed"],
+        "failed": result["failed"],
+        "errors": result["errors"],
+        "total_time": f"{result['total_time']:.0f}s",
+        "message": f"QA complete — {result['passed']} passed, {result['failed']} failed. Email sent.",
+    }
+
+
 @app.post("/agents/ads/propose")
 async def ads_propose(market: str | None = None):
     """Manually trigger campaign proposal(s). No market = all 3 markets."""

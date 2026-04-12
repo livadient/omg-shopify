@@ -282,6 +282,7 @@ All times are Cyprus time (Europe/Nicosia):
 | Agent (Name) | Schedule | Time | Purpose |
 |--------------|----------|------|---------|
 | Translation Checker (Hermes) | Daily | 02:00 | Check for untranslated/outdated content, translate EN→GR |
+| Design QA (Argus) | Daily | 03:00 | Verify all mapped designs render correctly on TShirtJunkies |
 | Design Creator (Mango) | Daily | 04:00 | Research trends, generate 5 designs, pre-cache mockups |
 | ~~SEO Optimizer (Sphinx)~~ | ~~Mon-Fri~~ | ~~04:30~~ | **DISABLED** — manually executing Atlas' recommendations instead. Can still run manually: `.venv/Scripts/python -m app.seo_management all` |
 | Blog Writer (Olive) | Tue, Fri | 05:00 | Generate SEO blog post for review |
@@ -296,6 +297,7 @@ Each agent has a name and personality reflected in email communications:
 | Design Creator | Mango | Purple | "Hey boss, Mango here!" |
 | Blog Writer | Olive | Green | "Olive here -- new post ready!" |
 | Ranking Advisor | Atlas | Blue | "Atlas reporting for duty" |
+| Design QA | Argus | Orange | "Argus here — nightly QA report" |
 | Translation Checker | Hermes | Blue | "Hermes here -- translation run complete" |
 | SEO Optimizer | Sphinx | N/A | **DISABLED** — does not send emails; run manually when needed |
 

@@ -65,6 +65,16 @@ def start_scheduler():
     #     replace_existing=True,
     # )
 
+    # Agent 5: Design QA (Argus) — daily at 03:00
+    from app.agents.design_qa import run_design_qa
+    scheduler.add_job(
+        run_design_qa,
+        CronTrigger(hour=3, minute=0, timezone=tz),
+        id="design_qa",
+        name="Design QA Checker (Argus)",
+        replace_existing=True,
+    )
+
     # Translation Checker — daily at 02:00
     from app.agents.translation_checker import check_and_fix_translations
     scheduler.add_job(
