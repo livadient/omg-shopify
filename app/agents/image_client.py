@@ -231,22 +231,41 @@ async def generate_text_design(
     return filepath
 
 
-async def validate_design_text(image_path: Path, intended_text: str) -> dict:
+async def validate_design_text(image_path: Path, intended_text: str = "") -> dict:
     """Use Claude vision to read text in a generated design and check for errors.
+
+    If intended_text is provided, checks that the image text matches it exactly.
+    If intended_text is empty, checks for any gibberish/garbled text that DALL-E
+    may have added unprompted — short legible words or no text at all are fine.
 
     Returns {"valid": True/False, "found_text": "...", "errors": "..."}.
     """
     from app.agents import llm_client
 
     image_data = base64.b64encode(image_path.read_bytes()).decode("utf-8")
-    prompt = (
-        f"Read ALL text visible in this image exactly as it appears, character by character. "
-        f"The intended text was: \"{intended_text}\"\n\n"
-        f"Compare the text in the image with the intended text. "
-        f"Report any spelling mistakes, missing letters, extra letters, or garbled words. "
-        f"Respond in this exact JSON format:\n"
-        f'{{"found_text": "exact text you see in the image", "valid": true/false, "errors": "description of errors or empty string if none"}}'
-    )
+
+    if intended_text:
+        prompt = (
+            f"Read ALL text visible in this image exactly as it appears, character by character. "
+            f"The intended text was: \"{intended_text}\"\n\n"
+            f"Compare the text in the image with the intended text. "
+            f"Report any spelling mistakes, missing letters, extra letters, or garbled words. "
+            f"Respond in this exact JSON format:\n"
+            f'{{"found_text": "exact text you see in the image", "valid": true/false, "errors": "description of errors or empty string if none"}}'
+        )
+    else:
+        prompt = (
+            "Examine this image carefully for ANY visible text, letters, or words. "
+            "If there is NO text at all, respond with valid=true. "
+            "If there IS text, determine whether it is readable, correctly spelled English "
+            "(or a recognizable word/phrase in any language). Short decorative words, "
+            "brand-style marks, or intentional artistic text are fine. "
+            "Flag as INVALID only if you see garbled, misspelled, or nonsensical text — "
+            "random letter combinations, gibberish, or words that aren't real words in any language. "
+            "Respond in this exact JSON format:\n"
+            '{"found_text": "exact text you see (or empty string if none)", "valid": true/false, '
+            '"errors": "description of gibberish found, or empty string if text is fine/absent"}'
+        )
 
     client = llm_client._get_client()
     response = await llm_client._create_with_retry(
@@ -281,7 +300,7 @@ async def validate_design_text(image_path: Path, intended_text: str) -> dict:
 
 async def generate_design_with_text_check(
     concept: str,
-    intended_text: str,
+    intended_text: str = "",
     style: str = "bold graphic illustration",
     size: str = "1024x1024",
     quality: str = "hd",
@@ -289,11 +308,10 @@ async def generate_design_with_text_check(
 ) -> Path:
     """Generate a design via DALL-E, validate text with Claude, and regenerate if wrong.
 
-    If intended_text is empty, skips validation and just generates once.
+    When intended_text is set: validates that the image text matches it exactly.
+    When intended_text is empty: validates that no gibberish/garbled text was
+    added by DALL-E (a common artifact). Legible English or no text = pass.
     """
-    if not intended_text:
-        return await generate_design(concept, style, size, quality)
-
     for attempt in range(1, max_retries + 1):
         image_path = await generate_design(concept, style, size, quality)
         validation = await validate_design_text(image_path, intended_text)
@@ -307,13 +325,23 @@ async def generate_design_with_text_check(
         )
 
         if attempt < max_retries:
-            # Regenerate with explicit spelling correction in the prompt
-            concept = (
-                f"{concept}. "
-                f"CRITICAL FIX: The previous image had text errors: {validation['errors']}. "
-                f"The text MUST read EXACTLY: \"{intended_text}\" — "
-                f"spell every word correctly, letter by letter."
-            )
+            if intended_text:
+                # Regenerate with explicit spelling correction
+                concept = (
+                    f"{concept}. "
+                    f"CRITICAL FIX: The previous image had text errors: {validation['errors']}. "
+                    f"The text MUST read EXACTLY: \"{intended_text}\" — "
+                    f"spell every word correctly, letter by letter."
+                )
+            else:
+                # Regenerate with explicit no-text instruction
+                concept = (
+                    f"{concept}. "
+                    f"CRITICAL: The previous image contained garbled/gibberish text: "
+                    f"\"{validation.get('found_text', '')}\". "
+                    f"Do NOT include ANY text, letters, words, or typography in this image. "
+                    f"Pure artwork/illustration only — zero text of any kind."
+                )
 
     logger.warning(f"Text validation failed after {max_retries} attempts, using last image")
     return image_path

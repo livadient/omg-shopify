@@ -123,11 +123,16 @@ class TestValidateDesignText:
 
 class TestGenerateDesignWithTextCheck:
     @pytest.mark.asyncio
-    async def test_empty_intended_text_skips_validation(self):
-        """When intended_text is empty, should skip validation and just generate."""
+    async def test_empty_intended_text_still_validates_for_gibberish(self):
+        """When intended_text is empty, should still validate for gibberish text."""
         mock_path = Path("/fake/design.png")
 
-        with patch("app.agents.image_client.generate_design", new_callable=AsyncMock, return_value=mock_path) as mock_gen:
+        with (
+            patch("app.agents.image_client.generate_design", new_callable=AsyncMock, return_value=mock_path),
+            patch("app.agents.image_client.validate_design_text", new_callable=AsyncMock) as mock_validate,
+        ):
+            mock_validate.return_value = {"valid": True, "found_text": "", "errors": ""}
+
             from app.agents.image_client import generate_design_with_text_check
             result = await generate_design_with_text_check(
                 concept="A cool design",
@@ -135,7 +140,7 @@ class TestGenerateDesignWithTextCheck:
             )
 
         assert result == mock_path
-        mock_gen.assert_called_once()
+        mock_validate.assert_called_once_with(mock_path, "")
 
     @pytest.mark.asyncio
     async def test_passes_on_first_try(self):

@@ -6,14 +6,14 @@ import pytest
 
 class TestStartScheduler:
     def test_registers_all_jobs(self):
-        """Verify that start_scheduler registers the expected 4 jobs (Sphinx/seo_optimizer disabled)."""
+        """Verify that start_scheduler registers the expected 5 jobs (Sphinx/seo_optimizer disabled)."""
         with patch("app.agents.scheduler.scheduler") as mock_scheduler:
             mock_scheduler.get_jobs.return_value = []
             from app.agents.scheduler import start_scheduler
             start_scheduler()
-            # 4 add_job calls: ranking_advisor, blog_writer, design_creator, translation_checker
+            # 5 add_job calls: ranking_advisor, blog_writer, design_creator, campaign_proposals, translation_checker
             # (seo_optimizer/Sphinx is disabled — run manually via python -m app.seo_management)
-            assert mock_scheduler.add_job.call_count == 4
+            assert mock_scheduler.add_job.call_count == 5
             mock_scheduler.start.assert_called_once()
 
     def test_job_ids(self):
