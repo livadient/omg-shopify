@@ -38,16 +38,33 @@ async def verify_mockup_matches_design(mockup_url: str, design_path: Path) -> di
     Returns {"match": True/False, "details": "..."}.
     """
     import base64
+    import mimetypes
     try:
         from app.agents import llm_client
+
+        def _guess_media_type(path_or_url: str, content: bytes) -> str:
+            """Guess image media type from extension or magic bytes."""
+            mt, _ = mimetypes.guess_type(path_or_url)
+            if mt and mt.startswith("image/"):
+                return mt
+            # Fallback: check magic bytes
+            if content[:3] == b"\xff\xd8\xff":
+                return "image/jpeg"
+            if content[:8] == b"\x89PNG\r\n\x1a\n":
+                return "image/png"
+            return "image/png"  # safe default
 
         # Download the mockup image
         async with httpx.AsyncClient() as client:
             resp = await client.get(mockup_url, timeout=30, follow_redirects=True)
             resp.raise_for_status()
-            mockup_b64 = base64.b64encode(resp.content).decode("utf-8")
+            mockup_bytes = resp.content
+            mockup_b64 = base64.b64encode(mockup_bytes).decode("utf-8")
+            mockup_mime = _guess_media_type(mockup_url, mockup_bytes)
 
-        design_b64 = base64.b64encode(design_path.read_bytes()).decode("utf-8")
+        design_bytes = design_path.read_bytes()
+        design_b64 = base64.b64encode(design_bytes).decode("utf-8")
+        design_mime = _guess_media_type(str(design_path), design_bytes)
 
         api_client = llm_client._get_client()
         response = await llm_client._create_with_retry(
@@ -65,8 +82,8 @@ async def verify_mockup_matches_design(mockup_url: str, design_path: Path) -> di
                         "and mockup framing — just compare the artwork/graphic/text. "
                         "Respond in JSON: {\"match\": true/false, \"details\": \"brief explanation\"}"
                     )},
-                    {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": design_b64}},
-                    {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": mockup_b64}},
+                    {"type": "image", "source": {"type": "base64", "media_type": design_mime, "data": design_b64}},
+                    {"type": "image", "source": {"type": "base64", "media_type": mockup_mime, "data": mockup_b64}},
                 ],
             }],
         )
