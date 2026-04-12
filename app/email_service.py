@@ -89,6 +89,15 @@ def _build_html(
         if error:
             link += f'<br><small style="color:#dc2626;">Error: {error}</small>'
 
+        mockup_mismatch = item.get("mockup_mismatch")
+        if mockup_mismatch:
+            link += (
+                f'<br><span style="display:inline-block;margin-top:4px;padding:4px 8px;'
+                f'background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;'
+                f'color:#991b1b;font-size:12px;font-weight:bold;">'
+                f'⚠ DESIGN MISMATCH: {mockup_mismatch}</span>'
+            )
+
         # Show Qstomizer rendered mockup (hosted on Shopify CDN, works in any email client)
         preview_img = ""
         if mockup_url:

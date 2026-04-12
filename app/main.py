@@ -29,6 +29,62 @@ QSTOMIZER_URL = f"{settings.tshirtjunkies_base_url}/apps/qstomizer/"
 FRONT_DESIGN_IMAGE = STATIC_DIR / "front_design.png"
 
 
+async def verify_mockup_matches_design(mockup_url: str, design_path: Path) -> dict:
+    """Download the Qstomizer mockup and compare it to our uploaded design using Claude vision.
+
+    Catches Qstomizer _customorderid collisions where the mockup shows a completely
+    different design than what we uploaded (e.g., another customer's custom order).
+
+    Returns {"match": True/False, "details": "..."}.
+    """
+    import base64
+    try:
+        from app.agents import llm_client
+
+        # Download the mockup image
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(mockup_url, timeout=30, follow_redirects=True)
+            resp.raise_for_status()
+            mockup_b64 = base64.b64encode(resp.content).decode("utf-8")
+
+        design_b64 = base64.b64encode(design_path.read_bytes()).decode("utf-8")
+
+        api_client = llm_client._get_client()
+        response = await llm_client._create_with_retry(
+            api_client,
+            model="claude-haiku-3-20240307",
+            max_tokens=300,
+            temperature=0,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": (
+                        "Image 1 is our original design artwork. "
+                        "Image 2 is a t-shirt mockup that should show the same design printed on it. "
+                        "Do they show the SAME design? Ignore the t-shirt itself, background color, "
+                        "and mockup framing — just compare the artwork/graphic/text. "
+                        "Respond in JSON: {\"match\": true/false, \"details\": \"brief explanation\"}"
+                    )},
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": design_b64}},
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": mockup_b64}},
+                ],
+            }],
+        )
+
+        import json
+        text = response.content[0].text
+        if "```json" in text:
+            text = text.split("```json")[1].split("```")[0]
+        elif "```" in text:
+            text = text.split("```")[1].split("```")[0]
+        result = json.loads(text.strip())
+        logger.info(f"Mockup verification: match={result.get('match')}, details={result.get('details', '')}")
+        return result
+    except Exception as e:
+        logger.warning(f"Mockup verification failed (non-blocking): {e}")
+        return {"match": True, "details": f"verification error: {e}"}
+
+
 @app.post("/map-products")
 async def map_products(source_url: str, target_url: str) -> ProductMapping:
     """Map a product from your store to a tshirtjunkies product by providing both URLs."""
@@ -326,6 +382,13 @@ async def _process_order_background(
             logger.info(f"  {item['title']} ({size}) → {item['cart_url']}")
             if item.get("mockup_url"):
                 logger.info(f"  Mockup: {item['mockup_url']}")
+                # Verify mockup matches our uploaded design (catches Qstomizer ID collisions)
+                verification = await verify_mockup_matches_design(item["mockup_url"], design_file)
+                if not verification.get("match", True):
+                    item["mockup_mismatch"] = verification.get("details", "Design mismatch detected")
+                    logger.warning(
+                        f"  MOCKUP MISMATCH for {item['title']}: {item['mockup_mismatch']}"
+                    )
         except Exception as e:
             logger.error(f"  Playwright failed for {item['title']} ({size}): {e}")
             item["cart_url"] = None
