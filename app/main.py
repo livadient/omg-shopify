@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, Form, Request
 from fastapi.staticfiles import StaticFiles
 
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -27,6 +27,29 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 QSTOMIZER_URL = f"{settings.tshirtjunkies_base_url}/apps/qstomizer/"
 FRONT_DESIGN_IMAGE = STATIC_DIR / "front_design.png"
+
+
+def _reject_confirm_page(
+    proposal_id: str, token: str, post_path: str, thing_label: str
+) -> str:
+    """HTML interstitial shown on GET of a reject link.
+
+    Requires the user to click a button that POSTs to confirm the rejection —
+    stops email-scanner prefetchers from silently rejecting proposals.
+    """
+    return f"""
+    <html><body style="font-family:sans-serif;max-width:560px;margin:40px auto;padding:20px;text-align:center;">
+        <h1 style="color:#111;">Reject this {thing_label}?</h1>
+        <p style="color:#6b7280;">Click the button below to confirm. If you arrived here by mistake you can safely close this tab.</p>
+        <form method="POST" action="{post_path}" style="margin-top:24px;">
+            <input type="hidden" name="proposal_id" value="{proposal_id}">
+            <input type="hidden" name="token" value="{token}">
+            <button type="submit" style="padding:12px 28px;background:#dc2626;color:white;border:0;border-radius:6px;font-size:16px;font-weight:bold;cursor:pointer;">
+                Yes, reject this {thing_label}
+            </button>
+        </form>
+    </body></html>
+    """
 
 
 async def verify_mockup_matches_design(mockup_url: str, design_path: Path) -> dict:
@@ -880,13 +903,25 @@ async def blog_approve(proposal_id: str, token: str = ""):
 
 @app.get("/agents/blog/reject/{proposal_id}", response_class=HTMLResponse)
 async def blog_reject(proposal_id: str, token: str = ""):
-    """Reject a blog proposal."""
-    from app.agents.approval import validate_token, update_status
+    """GET shows a confirmation page — real rejection requires POST."""
+    from app.agents.approval import validate_token
     proposal = validate_token(proposal_id, token)
     if not proposal:
         return HTMLResponse(
             "<h1>Invalid or expired link</h1>", status_code=403,
         )
+    return HTMLResponse(_reject_confirm_page(
+        proposal_id, token, "/agents/blog/reject", "blog post"
+    ))
+
+
+@app.post("/agents/blog/reject", response_class=HTMLResponse)
+async def blog_reject_confirm(proposal_id: str = Form(...), token: str = Form(...)):
+    """Actually reject the blog proposal (POST, so scanners can't trigger it)."""
+    from app.agents.approval import validate_token, update_status
+    proposal = validate_token(proposal_id, token)
+    if not proposal:
+        return HTMLResponse("<h1>Invalid or expired link</h1>", status_code=403)
     update_status(proposal_id, "rejected")
     return HTMLResponse("""
     <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
@@ -1008,7 +1043,23 @@ async def design_approve(proposal_id: str, token: str = "", version: str = "orig
 
 @app.get("/agents/design/reject/{proposal_id}", response_class=HTMLResponse)
 async def design_reject(proposal_id: str, token: str = ""):
-    """Reject a design proposal."""
+    """GET shows a confirmation page — real rejection requires POST.
+
+    This interstitial stops email-scanner prefetchers from silently rejecting
+    proposals (Outlook ATP, Yahoo link scanners, antivirus URL checkers, etc.).
+    """
+    from app.agents.approval import validate_token
+    proposal = validate_token(proposal_id, token)
+    if not proposal:
+        return HTMLResponse("<h1>Invalid or expired link</h1>", status_code=403)
+    return HTMLResponse(_reject_confirm_page(
+        proposal_id, token, "/agents/design/reject", "design"
+    ))
+
+
+@app.post("/agents/design/reject", response_class=HTMLResponse)
+async def design_reject_confirm(proposal_id: str = Form(...), token: str = Form(...)):
+    """Actually reject the design proposal (POST, so scanners can't trigger it)."""
     from app.agents.approval import validate_token, update_status
     proposal = validate_token(proposal_id, token)
     if not proposal:
@@ -1017,7 +1068,7 @@ async def design_reject(proposal_id: str, token: str = ""):
     return HTMLResponse("""
     <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
         <h1 style="color:#dc2626;">Design Rejected</h1>
-        <p>New designs will be generated on the next scheduled run (Monday 10:00).</p>
+        <p>New designs will be generated on the next scheduled run.</p>
     </body></html>
     """)
 
@@ -1191,7 +1242,19 @@ async def ads_approve(proposal_id: str, token: str = ""):
 
 @app.get("/agents/ads/reject/{proposal_id}", response_class=HTMLResponse)
 async def ads_reject(proposal_id: str, token: str = ""):
-    """Reject a campaign proposal."""
+    """GET shows a confirmation page — real rejection requires POST."""
+    from app.agents.approval import validate_token
+    proposal = validate_token(proposal_id, token)
+    if not proposal:
+        return HTMLResponse("<h1>Invalid or expired link</h1>", status_code=403)
+    return HTMLResponse(_reject_confirm_page(
+        proposal_id, token, "/agents/ads/reject", "campaign"
+    ))
+
+
+@app.post("/agents/ads/reject", response_class=HTMLResponse)
+async def ads_reject_confirm(proposal_id: str = Form(...), token: str = Form(...)):
+    """Actually reject the campaign proposal (POST, so scanners can't trigger it)."""
     from app.agents.approval import validate_token, update_status
     proposal = validate_token(proposal_id, token)
     if not proposal:
