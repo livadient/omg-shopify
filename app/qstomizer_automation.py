@@ -385,14 +385,22 @@ async def _customize_and_add_to_cart_impl(
         checkout_url = _build_checkout_permalink(cart_data, shipping)
         print(f"Checkout permalink: {checkout_url}")
 
-        # Extract Qstomizer mockup image URL (the rendered product preview)
+        # Extract Qstomizer mockup image URL (the rendered product preview).
+        # For back placement, the design is on the back canvas — front mockup
+        # would be an empty tee. Pick the image that actually shows our design.
         mockup_url = None
+        is_back = (placement or "front").lower() == "back"
         for item in cart_data.get("items", []):
             props = item.get("properties", {})
-            # Prefer the Shopify CDN URL (publicly accessible, works in emails)
-            mockup_url = props.get("Custom Image:") or props.get("_customimagefront")
+            if is_back:
+                # Back placement: front mockup is empty — use back. No Shopify CDN
+                # mirror exists for the back image, so bigvanet.com is our only option.
+                mockup_url = props.get("_customimageback") or props.get("_customimagefront")
+            else:
+                # Front placement: prefer the Shopify CDN URL (cached, email-friendly)
+                mockup_url = props.get("Custom Image:") or props.get("_customimagefront")
             if mockup_url:
-                print(f"Mockup image: {mockup_url}")
+                print(f"Mockup image ({placement or 'front'}): {mockup_url}")
                 break
 
         await browser.close()
