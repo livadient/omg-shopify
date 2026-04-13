@@ -15,8 +15,9 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 PAST_DESIGNS_FILE = DATA_DIR / "past_designs.json"
 
-# Extra recipients who should receive Mango's emails (in addition to settings.email_recipients)
-EXTRA_RECIPIENTS = ["kyriaki_mara@yahoo.com"]
+# Extra recipients for Mango's NEW DESIGNS PROPOSAL email only (not for the
+# admin-only approval success/failure notifications).
+PROPOSAL_EXTRA_RECIPIENTS = ["kmnarangos@hotmail.com", "kyriaki_mara@yahoo.com"]
 
 SYSTEM_PROMPT_BASE = """You are a creative director and trend researcher for OMG (omg.com.cy), an online t-shirt brand. Your target market is ages 16-45 globally.
 
@@ -422,7 +423,6 @@ async def execute_approval_in_background(
                 </div>
             </div>
             """,
-            extra_recipients=EXTRA_RECIPIENTS,
         )
         logger.info(f"Background approval succeeded for proposal {proposal_id} → product {result.get('product_id')}")
     except Exception as e:
@@ -444,7 +444,6 @@ async def execute_approval_in_background(
                 </div>
             </div>
             """,
-            extra_recipients=EXTRA_RECIPIENTS,
         )
 
 
@@ -677,7 +676,7 @@ async def _send_design_email(proposals: list[dict]) -> None:
         subject=f"[Mango] {len(proposals)} fresh designs hot off the easel",
         html_body=html,
         inline_images=inline_images,
-        extra_recipients=EXTRA_RECIPIENTS,
+        extra_recipients=PROPOSAL_EXTRA_RECIPIENTS,
     )
 
 

@@ -10,9 +10,6 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Extra recipients who should receive Olive's emails (in addition to settings.email_recipients)
-EXTRA_RECIPIENTS = ["kyriaki_mara@yahoo.com"]
-
 SYSTEM_PROMPT = """You are an expert SEO blog writer for OMG (omg.com.cy), a Cyprus-based online t-shirt store that sells custom graphic tees. The store ships to Cyprus, Greece, and across Europe.
 
 Brand voice: casual, trendy, Mediterranean lifestyle. Anyone can enjoy a great graphic tee — do NOT mention target demographics, age ranges, or audience segments in the blog post.
@@ -163,7 +160,6 @@ Write a new, unique SEO blog post. Choose a fresh angle that complements the exi
     await send_agent_email(
         subject=f"[Olive] New post ready: \"{blog_data.get('title', 'Untitled')}\"",
         html_body=html,
-        extra_recipients=EXTRA_RECIPIENTS,
     )
 
     logger.info(f"Blog proposal {proposal['id']} created and emailed")
