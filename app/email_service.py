@@ -10,6 +10,11 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
+# Extra recipients who should receive every customer order notification
+# (in addition to the global settings.email_recipients).
+ORDER_NOTIFICATION_EXTRA_RECIPIENTS = ["kmnarangos@hotmail.com"]
+
+
 async def send_order_notification(
     order_number: str | int,
     customer_name: str,
@@ -36,13 +41,22 @@ async def send_order_notification(
         logger.warning("No SMTP host configured, skipping notification")
         return
 
+    # Merge base + extra recipients (case-insensitive dedupe)
+    recipients: list[str] = []
+    seen: set[str] = set()
+    for addr in list(settings.email_recipients) + ORDER_NOTIFICATION_EXTRA_RECIPIENTS:
+        key = addr.lower().strip()
+        if key and key not in seen:
+            seen.add(key)
+            recipients.append(addr)
+
     subject = f"New OMG Order #{order_number} — {customer_name}"
     html = _build_html(order_number, customer_name, order_total, currency, items, shipping)
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = settings.email_sender
-    msg["To"] = ", ".join(settings.email_recipients)
+    msg["To"] = ", ".join(recipients)
     msg.attach(MIMEText(html, "html"))
 
     try:
@@ -53,9 +67,9 @@ async def send_order_notification(
             username=settings.smtp_username,
             password=settings.smtp_password,
             start_tls=True,
-            recipients=settings.email_recipients,
+            recipients=recipients,
         )
-        logger.info(f"Order #{order_number} notification sent to {settings.email_recipients}")
+        logger.info(f"Order #{order_number} notification sent to {recipients}")
     except Exception:
         logger.exception(f"Failed to send email for order #{order_number}")
 
