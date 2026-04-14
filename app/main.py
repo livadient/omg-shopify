@@ -162,6 +162,124 @@ async def verify_mockup_matches_design(mockup_url: str, design_path: Path) -> di
         return {"match": True, "details": f"verification error: {e}"}
 
 
+@app.get("/tj-checkout/{token}", response_class=HTMLResponse)
+async def tj_checkout_redirect(token: str):
+    """Redirect Vangelis to a TJ checkout with the cart properly rebuilt.
+
+    Replaces the broken /cart/VID:QTY?attributes[…] permalink. Shopify's
+    permalink format only carries cart-level attributes, so Qstomizer's line
+    item properties (_customimagefront, _customimageback, _customorderid)
+    were getting stripped on rebuild — TJ then printed the wrong/no image.
+
+    The flow:
+      1. Look up the saved cart payload (variant, qty, line item properties,
+         shipping) by token.
+      2. Return a tiny HTML page that:
+         a. clears any existing TJ cart via fetch (storefront /cart/clear.js
+            allows CORS), then
+         b. auto-POSTs a form to TJ's /cart/add — `properties[key]` survives
+            this path — and uses return_to=/checkout?... to land on a
+            shipping-prefilled checkout.
+    """
+    from html import escape
+    from urllib.parse import urlencode
+    from app.tj_checkout import get_session
+
+    session = get_session(token)
+    if not session:
+        return HTMLResponse("<h1>Checkout link expired or invalid</h1>", status_code=404)
+
+    items = session.get("items", [])
+    shipping = session.get("shipping", {}) or {}
+    if not items:
+        return HTMLResponse("<h1>Empty cart — nothing to check out</h1>", status_code=400)
+
+    # Build the checkout-prefill query string for return_to
+    prefill_map = {
+        "email": "checkout[email]",
+        "first_name": "checkout[shipping_address][first_name]",
+        "last_name": "checkout[shipping_address][last_name]",
+        "address1": "checkout[shipping_address][address1]",
+        "address2": "checkout[shipping_address][address2]",
+        "city": "checkout[shipping_address][city]",
+        "zip": "checkout[shipping_address][zip]",
+        "country_code": "checkout[shipping_address][country]",
+        "phone": "checkout[shipping_address][phone]",
+    }
+    checkout_params = {
+        param: shipping[key]
+        for key, param in prefill_map.items()
+        if shipping.get(key)
+    }
+    return_to = "/checkout"
+    if checkout_params:
+        return_to += "?" + urlencode(checkout_params)
+
+    # The first item carries return_to (TJ redirects after /cart/add).
+    # Subsequent items would each cause their own redirect — to add multiple
+    # items in one shot, we use the /cart/add.js fetch chain in JS instead of
+    # a sequence of form posts. Single item is the common case.
+    first = items[0]
+    rest = items[1:]
+
+    def _hidden(name: str, value: str) -> str:
+        return f'<input type="hidden" name="{escape(name)}" value="{escape(value)}">'
+
+    first_inputs = [
+        _hidden("id", str(first["variant_id"])),
+        _hidden("quantity", str(first["quantity"])),
+        _hidden("return_to", return_to),
+    ]
+    for k, v in first.get("properties", {}).items():
+        first_inputs.append(_hidden(f"properties[{k}]", v))
+
+    # Extra items get added via fetch BEFORE the form submit (so they end up
+    # in the same cart). Build their JSON payloads here.
+    import json as _json
+    extras_json = _json.dumps([
+        {
+            "id": str(it["variant_id"]),
+            "quantity": it["quantity"],
+            "properties": it.get("properties", {}),
+        }
+        for it in rest
+    ])
+
+    return HTMLResponse(f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>Opening TJ checkout…</title>
+<style>body{{font-family:sans-serif;text-align:center;padding:60px;color:#374151;}}</style>
+</head><body>
+<h2>Opening TJ checkout…</h2>
+<p>Clearing any leftover cart, then taking you to checkout with the correct design attached.</p>
+<form id="tjf" method="POST" action="https://tshirtjunkies.co/cart/add" accept-charset="UTF-8">
+{"".join(first_inputs)}
+</form>
+<script>
+(async () => {{
+  try {{
+    await fetch('https://tshirtjunkies.co/cart/clear.js', {{
+      method: 'POST', credentials: 'include',
+    }});
+  }} catch (e) {{ /* non-fatal — proceed anyway */ }}
+
+  const extras = {extras_json};
+  for (const item of extras) {{
+    try {{
+      await fetch('https://tshirtjunkies.co/cart/add.js', {{
+        method: 'POST',
+        credentials: 'include',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify(item),
+      }});
+    }} catch (e) {{ /* non-fatal */ }}
+  }}
+
+  document.getElementById('tjf').submit();
+}})();
+</script>
+</body></html>""")
+
+
 @app.post("/map-products")
 async def map_products(source_url: str, target_url: str) -> ProductMapping:
     """Map a product from your store to a tshirtjunkies product by providing both URLs."""

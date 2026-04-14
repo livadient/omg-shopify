@@ -409,57 +409,25 @@ async def _customize_and_add_to_cart_impl(
 
 
 def _build_checkout_permalink(cart_data: dict, shipping: dict | None = None) -> str:
-    """Build a shareable Shopify cart permalink with pre-filled checkout fields.
+    """Return a self-hosted /tj-checkout/{token} URL that rebuilds the cart on
+    TJ via form POST to /cart/add (preserving line item properties).
 
-    Uses the /cart/VARIANT:QTY format which works across browsers/devices.
-    Appends checkout[shipping_address] params to pre-fill the form.
+    The native Shopify /cart/VID:QTY?attributes[…] permalink only accepts
+    cart-level attributes — Qstomizer's _customimagefront/_customimageback/
+    _customorderid live as line item properties, and those are stripped when
+    the cart is rebuilt from a permalink. The result is TJ printing the wrong
+    image (or none) because the order arrives without the design metadata
+    attached to the line item. The /tj-checkout endpoint emits a tiny HTML
+    page that auto-POSTs to TJ's /cart/add with properties[…] intact.
     """
-    from urllib.parse import urlencode, quote
+    if not cart_data.get("items"):
+        return "https://tshirtjunkies.co/cart"
 
-    base = "https://tshirtjunkies.co"
+    from app.config import settings
+    from app.tj_checkout import save_session
 
-    # Build cart items part: /cart/variant_id:qty,variant_id:qty
-    items_part = ",".join(
-        f"{item['variant_id']}:{item['quantity']}"
-        for item in cart_data.get("items", [])
-    )
-    if not items_part:
-        return f"{base}/cart"
-
-    # Build checkout pre-fill params
-    params = {}
-    if shipping:
-        field_map = {
-            "email": "checkout[email]",
-            "first_name": "checkout[shipping_address][first_name]",
-            "last_name": "checkout[shipping_address][last_name]",
-            "address1": "checkout[shipping_address][address1]",
-            "address2": "checkout[shipping_address][address2]",
-            "city": "checkout[shipping_address][city]",
-            "zip": "checkout[shipping_address][zip]",
-            "country_code": "checkout[shipping_address][country]",
-            "phone": "checkout[shipping_address][phone]",
-        }
-        for key, param_name in field_map.items():
-            value = shipping.get(key, "")
-            if value:
-                params[param_name] = value
-
-    # Add Qstomizer line item properties
-    # Format: attributes[_customorderid]=XXX for cart-level,
-    # or use /cart/add endpoint for per-item properties
-    for i, item in enumerate(cart_data.get("items", [])):
-        props = item.get("properties", {})
-        for prop_key, prop_value in props.items():
-            if prop_value:
-                params[f"attributes[{prop_key}]"] = str(prop_value)
-
-    query = urlencode(params) if params else ""
-    url = f"{base}/cart/{items_part}"
-    if query:
-        url += f"?{query}"
-
-    return url
+    token = save_session(cart_data, shipping)
+    return f"{settings.server_base_url}/tj-checkout/{token}"
 
 
 async def _fill_checkout(page, shipping: dict) -> None:
