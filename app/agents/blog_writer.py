@@ -11,7 +11,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 # Extra recipients for Olive's blog post notifications.
-EXTRA_RECIPIENTS = ["kmnarangos@hotmail.com", "kyriaki_mara@yahoo.com"]
+EXTRA_RECIPIENTS = ["kmarangos@hotmail.com", "kyriaki_mara@yahoo.com"]
 
 SYSTEM_PROMPT = """You are an expert SEO blog writer for OMG (omg.com.cy), a Cyprus-based online t-shirt store that sells custom graphic tees. The store ships to Cyprus, Greece, and across Europe.
 

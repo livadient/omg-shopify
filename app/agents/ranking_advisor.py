@@ -16,7 +16,7 @@ from app.config import settings
 
 # Extra recipients for Atlas' DAILY BRIEFING email only — not the campaign
 # proposal/launch admin notifications.
-BRIEFING_EXTRA_RECIPIENTS = ["kmnarangos@hotmail.com", "kyriaki_mara@yahoo.com"]
+BRIEFING_EXTRA_RECIPIENTS = ["kyriaki_mara@yahoo.com"]
 
 logger = logging.getLogger(__name__)
 

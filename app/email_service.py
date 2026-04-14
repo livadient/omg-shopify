@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Extra recipients who should receive every customer order notification
 # (in addition to the global settings.email_recipients).
-ORDER_NOTIFICATION_EXTRA_RECIPIENTS = ["kmnarangos@hotmail.com"]
+ORDER_NOTIFICATION_EXTRA_RECIPIENTS: list[str] = []
 
 
 async def send_order_notification(

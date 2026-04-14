@@ -17,7 +17,7 @@ PAST_DESIGNS_FILE = DATA_DIR / "past_designs.json"
 
 # Extra recipients for Mango's NEW DESIGNS PROPOSAL email only (not for the
 # admin-only approval success/failure notifications).
-PROPOSAL_EXTRA_RECIPIENTS = ["kmnarangos@hotmail.com", "kyriaki_mara@yahoo.com"]
+PROPOSAL_EXTRA_RECIPIENTS = ["kmarangos@hotmail.com", "kyriaki_mara@yahoo.com"]
 
 SYSTEM_PROMPT_BASE = """You are a creative director and trend researcher for OMG (omg.com.cy), an online t-shirt brand. Your target market is ages 16-45 globally.
 
