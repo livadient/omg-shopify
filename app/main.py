@@ -52,6 +52,38 @@ def _reject_confirm_page(
     """
 
 
+def _approve_confirm_page(
+    proposal_id: str, token: str, post_path: str, thing_label: str,
+    title: str = "", extras: dict | None = None,
+) -> str:
+    """HTML interstitial shown on GET of an approve link.
+
+    Requires the user to click a button that POSTs to actually approve —
+    stops email-scanner prefetchers (Outlook Safe Links, Gmail, etc.) from
+    silently approving proposals and publishing products/posts without consent.
+    """
+    extras = extras or {}
+    extra_inputs = "".join(
+        f'<input type="hidden" name="{k}" value="{v}">' for k, v in extras.items()
+    )
+    title_block = f'<p style="color:#374151;"><strong>{title}</strong></p>' if title else ""
+    return f"""
+    <html><body style="font-family:sans-serif;max-width:560px;margin:40px auto;padding:20px;text-align:center;">
+        <h1 style="color:#111;">Approve this {thing_label}?</h1>
+        {title_block}
+        <p style="color:#6b7280;">Click the button below to confirm. If you arrived here by mistake you can safely close this tab.</p>
+        <form method="POST" action="{post_path}" style="margin-top:24px;">
+            <input type="hidden" name="proposal_id" value="{proposal_id}">
+            <input type="hidden" name="token" value="{token}">
+            {extra_inputs}
+            <button type="submit" style="padding:12px 28px;background:#059669;color:white;border:0;border-radius:6px;font-size:16px;font-weight:bold;cursor:pointer;">
+                Yes, approve this {thing_label}
+            </button>
+        </form>
+    </body></html>
+    """
+
+
 async def verify_mockup_matches_design(mockup_url: str, design_path: Path) -> dict:
     """Download the Qstomizer mockup and compare it to our uploaded design using Claude vision.
 
@@ -874,7 +906,27 @@ async def blog_preview(proposal_id: str):
 
 @app.get("/agents/blog/approve/{proposal_id}", response_class=HTMLResponse)
 async def blog_approve(proposal_id: str, token: str = ""):
-    """Approve and publish a blog post."""
+    """GET shows a confirmation page — real approval requires POST.
+
+    This interstitial stops email-scanner prefetchers (Outlook Safe Links,
+    Gmail, etc.) from silently publishing posts when they crawl email links.
+    """
+    from app.agents.approval import validate_token
+    proposal = validate_token(proposal_id, token)
+    if not proposal:
+        return HTMLResponse(
+            "<h1>Invalid or expired link</h1><p>This proposal may have already been processed.</p>",
+            status_code=403,
+        )
+    return HTMLResponse(_approve_confirm_page(
+        proposal_id, token, "/agents/blog/approve", "blog post",
+        title=proposal["data"].get("title", ""),
+    ))
+
+
+@app.post("/agents/blog/approve", response_class=HTMLResponse)
+async def blog_approve_confirm(proposal_id: str = Form(...), token: str = Form(...)):
+    """Actually approve and publish the blog post (POST, so scanners can't trigger it)."""
     from app.agents.approval import claim_proposal, update_status
     proposal = claim_proposal(proposal_id, token)
     if not proposal:
@@ -882,7 +934,6 @@ async def blog_approve(proposal_id: str, token: str = ""):
             "<h1>Invalid or expired link</h1><p>This proposal may have already been processed.</p>",
             status_code=403,
         )
-    # Execute
     from app.agents.blog_writer import execute_approval
     try:
         article = await execute_approval(proposal_id)
@@ -996,8 +1047,36 @@ _background_approval_tasks: set = set()
 
 @app.get("/agents/design/approve/{proposal_id}", response_class=HTMLResponse)
 async def design_approve(proposal_id: str, token: str = "", version: str = "original"):
-    """Approve a design — claims the proposal, returns immediately, builds the
-    product on Shopify in the background.
+    """GET shows a confirmation page — real approval requires POST.
+
+    This interstitial stops email-scanner prefetchers (Outlook Safe Links,
+    Gmail, etc.) from silently approving and publishing products when they
+    crawl email links. See commit history for the incident that prompted this.
+    """
+    from app.agents.approval import validate_token
+    proposal = validate_token(proposal_id, token)
+    if not proposal:
+        return HTMLResponse(
+            "<h1>Invalid or expired link</h1><p>This proposal may have already been processed.</p>",
+            status_code=403,
+        )
+    title = proposal["data"].get("suggested_title") or proposal["data"].get("name", "")
+    version_label = "Transparent (no bg)" if version == "nobg" else "Original (with bg)"
+    return HTMLResponse(_approve_confirm_page(
+        proposal_id, token, "/agents/design/approve", "design",
+        title=f"{title} — {version_label}",
+        extras={"version": version},
+    ))
+
+
+@app.post("/agents/design/approve", response_class=HTMLResponse)
+async def design_approve_confirm(
+    proposal_id: str = Form(...),
+    token: str = Form(...),
+    version: str = Form("original"),
+):
+    """Actually approve the design — claims the proposal, returns immediately,
+    builds the product on Shopify in the background.
 
     Building the product takes 60-90s (Playwright + Shopify uploads). Holding
     the HTTP response open that long causes browsers to time out and users to
@@ -1017,7 +1096,6 @@ async def design_approve(proposal_id: str, token: str = "", version: str = "orig
             status_code=403,
         )
 
-    # Fire-and-forget the actual product creation
     task = asyncio.create_task(
         execute_approval_in_background(proposal_id, version, proposal["data"])
     )
@@ -1212,7 +1290,27 @@ async def ads_propose(market: str | None = None):
 
 @app.get("/agents/ads/approve/{proposal_id}", response_class=HTMLResponse)
 async def ads_approve(proposal_id: str, token: str = ""):
-    """Approve a campaign proposal — creates it in Google Ads (paused)."""
+    """GET shows a confirmation page — real approval requires POST.
+
+    Stops email-scanner prefetchers from silently creating Google Ads
+    campaigns when they crawl email links.
+    """
+    from app.agents.approval import validate_token
+    proposal = validate_token(proposal_id, token)
+    if not proposal:
+        return HTMLResponse(
+            "<h1>Invalid or expired link</h1><p>This proposal may have already been processed.</p>",
+            status_code=403,
+        )
+    return HTMLResponse(_approve_confirm_page(
+        proposal_id, token, "/agents/ads/approve", "campaign",
+        title=proposal["data"].get("campaign_name", ""),
+    ))
+
+
+@app.post("/agents/ads/approve", response_class=HTMLResponse)
+async def ads_approve_confirm(proposal_id: str = Form(...), token: str = Form(...)):
+    """Actually approve a campaign proposal — creates it in Google Ads (paused)."""
     from app.agents.approval import claim_proposal, update_status
     proposal = claim_proposal(proposal_id, token)
     if not proposal:

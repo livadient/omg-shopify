@@ -71,15 +71,18 @@ def _is_summer_season() -> bool:
     return 3 <= datetime.now(timezone.utc).month <= 9
 
 
-def _build_system_prompt() -> str:
-    """Build Mango's system prompt.
+def _compute_concept_plan() -> dict:
+    """Return the active concept plan for today's run.
 
-    Always includes Feminine and Love Cyprus concept types (year-round).
-    Adds the Summer concept type only in season (Mar–Sep).
+    Keys:
+      total_count — how many concepts Claude must generate
+      types_block — the numbered markdown list of type definitions
+      cyprus_indices_str — "#1, #7" etc. — which concepts MAY be Cyprus-themed
+      other_str — "#2-#5, #6" etc. — which MUST be globally scoped
 
-    Concept types are numbered consecutively from 1; Cyprus-themed types
-    (#1 cyprus and the love-cyprus type) are exempt from the
-    "must not reference Cyprus" scope rule applied to the others.
+    Shared by _build_system_prompt (for the system prompt) and the runtime
+    user prompt so the two cannot drift apart — they used to contradict each
+    other, causing Claude to generate 8 one day and 5 the next.
     """
     summer_active = _is_summer_season()
 
@@ -97,7 +100,7 @@ def _build_system_prompt() -> str:
     extra_blocks: list[str] = []
     cyprus_indices: list[int] = [1]  # core concept #1 is cyprus
     next_n = 6
-    for label, body, is_cyprus in extras:
+    for _label, body, is_cyprus in extras:
         extra_blocks.append(f"{next_n}. " + body)
         if is_cyprus:
             cyprus_indices.append(next_n)
@@ -119,6 +122,30 @@ def _build_system_prompt() -> str:
             if other_indices == list(range(other_indices[0], other_indices[-1] + 1))
             else ", ".join(f"#{n}" for n in other_indices)
         )
+
+    return {
+        "total_count": total_count,
+        "types_block": types_block,
+        "cyprus_indices_str": cyprus_indices_str,
+        "other_str": other_str,
+    }
+
+
+def _build_system_prompt() -> str:
+    """Build Mango's system prompt.
+
+    Always includes Feminine and Love Cyprus concept types (year-round).
+    Adds the Summer concept type only in season (Mar–Sep).
+
+    Concept types are numbered consecutively from 1; Cyprus-themed types
+    (#1 cyprus and the love-cyprus type) are exempt from the
+    "must not reference Cyprus" scope rule applied to the others.
+    """
+    plan = _compute_concept_plan()
+    total_count = plan["total_count"]
+    types_block = plan["types_block"]
+    cyprus_indices_str = plan["cyprus_indices_str"]
+    other_str = plan["other_str"]
 
     scope_note = (
         f"IMPORTANT: Only concepts {cyprus_indices_str} may be Cyprus/Mediterranean themed. "
@@ -191,6 +218,61 @@ def _record_designs(concepts: list[dict]) -> None:
     _save_past_designs(past)
 
 
+async def _proofread_concept_texts(concepts: list[dict]) -> None:
+    """Proofread each concept's text_on_shirt for spelling/grammar in English
+    and Greek. Mutates the concepts list in place. Runs one batched Haiku
+    call for the whole run so cost is ~1 cheap call regardless of concept
+    count. Failures are swallowed — better to print slightly-wrong text than
+    to crash the run.
+    """
+    items = [
+        (i, (c.get("text_on_shirt") or "").strip())
+        for i, c in enumerate(concepts)
+    ]
+    items = [(i, t) for i, t in items if t]
+    if not items:
+        return
+
+    payload = [{"index": i, "text": t} for i, t in items]
+    system_prompt = (
+        "You are a bilingual (English/Greek) proofreader for t-shirt slogans. "
+        "You will be given a JSON array of {index, text} entries. For each, "
+        "return the text with spelling, grammar, accent, and punctuation "
+        "errors fixed. Preserve the original style, casing, line breaks, "
+        "emoji, and intent — do not rewrite or translate. Keep it the same "
+        "language it started in. Greek examples of errors to fix: missing "
+        "final sigma (ΩΡΕ → ΩΡΕΣ), wrong accents, wrong breathings. "
+        "If the text is already correct, return it unchanged."
+    )
+    user_prompt = (
+        "Proofread each slogan. Reply with JSON only, no prose:\n"
+        '{"results": [{"index": 0, "text": "corrected"}, ...]}\n\n'
+        f"Slogans:\n{json.dumps(payload, ensure_ascii=False)}"
+    )
+
+    try:
+        result = await llm_client.generate_json(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1000,
+            temperature=0,
+        )
+    except Exception as e:
+        logger.warning(f"Slogan proofread failed, using originals: {e}")
+        return
+
+    for entry in result.get("results", []):
+        idx = entry.get("index")
+        new_text = (entry.get("text") or "").strip()
+        if not isinstance(idx, int) or not (0 <= idx < len(concepts)) or not new_text:
+            continue
+        old_text = (concepts[idx].get("text_on_shirt") or "").strip()
+        if new_text != old_text:
+            logger.info(f"Proofread slogan #{idx}: {old_text!r} -> {new_text!r}")
+            concepts[idx]["text_on_shirt"] = new_text
+
+
 def _build_exclusion_prompt() -> str:
     """Build a prompt section listing past designs to avoid."""
     past = _load_past_designs()
@@ -248,6 +330,11 @@ Summarize the top 10-15 specific trends you find, with concrete examples. Focus 
     _memory_prompt = build_memory_prompt("mango")
     exclusion_prompt = _build_exclusion_prompt()
 
+    plan = _compute_concept_plan()
+    total_count = plan["total_count"]
+    cyprus_indices_str = plan["cyprus_indices_str"]
+    other_str = plan["other_str"]
+
     user_prompt = f"""Today's date: {date_str}
 Store: OMG (omg.com.cy), Cyprus-based t-shirt brand
 Markets: Cyprus, Greece, Europe
@@ -256,8 +343,8 @@ Current season: {season}
 CURRENT T-SHIRT TRENDS (from real-time research):
 {trend_research}
 
-Based on these REAL current trends, generate 5 original, commercially viable design concepts (one per type).
-Remember: only concept #1 (cyprus type) should be Cyprus-themed. Concepts #2-#5 must be purely global — no Mediterranean, no Cyprus, no Greece references.
+Based on these REAL current trends, generate {total_count} original, commercially viable design concepts (one per type).
+Remember: only concepts {cyprus_indices_str} (Cyprus types) should be Cyprus-themed. Concepts {other_str} must be purely global — no Mediterranean, no Cyprus, no Greece references.
 Be specific in the design description so an AI image generator can create it accurately.{exclusion_prompt}
 {_memory_prompt}"""
 
@@ -274,6 +361,13 @@ Be specific in the design description so an AI image generator can create it acc
     if not concepts:
         logger.warning("No design concepts generated")
         return []
+
+    # Proofread slogan text before it goes to the printer. Claude Sonnet
+    # occasionally produces broken English or Greek in the generation call
+    # (e.g. "ΩΡΕ ΓΡΑΦΕΙΟΥ" missing the final Σ, "EST. ANTIQUITY"), and since
+    # slogan tees render text_on_shirt verbatim via Pillow, those errors land
+    # on real shirts. A cheap Haiku pass catches spelling/grammar mistakes.
+    await _proofread_concept_texts(concepts)
 
     # Record concepts to history so they won't be repeated
     _record_designs(concepts)

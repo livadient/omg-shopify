@@ -327,11 +327,14 @@ RECENT RECOMMENDATIONS (avoid repeating):
 {build_memory_prompt("atlas")}
 Generate today's ranking recommendations focused on the {market_name} market. Be specific and actionable. Use the real keyword data for your Google Ads suggestions instead of estimating. If there are relevant trending topics, suggest how to capitalize on them (blog posts, ads, social media)."""
 
-    # Call Claude
+    # Call Claude. max_tokens must comfortably fit the full JSON response
+    # (top_actions can be lengthy, and Greek text is more token-heavy than
+    # English). 2048 truncated mid-string and broke json.loads — give it
+    # room. 8k is well under the model limit and keeps the full report intact.
     report = await llm_client.generate_json(
         system_prompt=SYSTEM_PROMPT,
         user_prompt=user_prompt,
-        max_tokens=2048,
+        max_tokens=8192,
         temperature=0.8,
     )
 
