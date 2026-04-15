@@ -201,6 +201,102 @@ async def _fetch_articles() -> list[dict]:
     return []
 
 
+async def _audit_storefront(products: list[dict]) -> str:
+    """Fetch live HTML for the homepage, one product, one collection, and one
+    blog article. Extract JSON-LD types, meta description, canonical, and
+    hreflang tags.
+
+    Goal: give Atlas the actual rendered state of the site so it cannot
+    recommend "add Product schema" when Dawn already ships it, "add
+    hreflang" when Shopify wires it automatically, etc. Atlas was
+    hallucinating these gaps because it only saw the product list and
+    its training-time prior on what a typical Shopify store is missing.
+    """
+    import re
+
+    sample_product = products[0]["handle"] if products else None
+    pages: list[tuple[str, str]] = [
+        ("homepage", "https://omg.com.cy/"),
+        ("collection (t-shirts)", "https://omg.com.cy/collections/t-shirts"),
+    ]
+    if sample_product:
+        pages.append((f"product ({sample_product})", f"https://omg.com.cy/products/{sample_product}"))
+    pages.append(("blog index", "https://omg.com.cy/blogs/news"))
+
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; OMG-Atlas/1.0)"}
+
+    sections: list[str] = []
+    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+        for label, url in pages:
+            try:
+                resp = await client.get(url, headers=headers)
+                if resp.status_code != 200:
+                    sections.append(f"  [{label}] {url}\n    FETCH FAILED: HTTP {resp.status_code}")
+                    continue
+                html = resp.text
+            except Exception as e:
+                sections.append(f"  [{label}] {url}\n    FETCH FAILED: {e}")
+                continue
+
+            facts: list[str] = []
+
+            # Title + meta description + canonical
+            tm = re.search(r"<title[^>]*>([^<]+)</title>", html, re.I)
+            if tm:
+                facts.append(f"title: {tm.group(1).strip()[:120]}")
+            md = re.search(r'<meta\s+name=["\']description["\']\s+content=["\']([^"\']+)', html, re.I)
+            facts.append(f"meta description: PRESENT ({len(md.group(1))} chars)" if md else "meta description: MISSING")
+            cm = re.search(r'<link\s+rel=["\']canonical["\']\s+href=["\']([^"\']+)', html, re.I)
+            facts.append(f"canonical: PRESENT ({cm.group(1)})" if cm else "canonical: MISSING")
+
+            # hreflang
+            hreflangs = re.findall(r'<link\s+rel=["\']alternate["\']\s+hreflang=["\']([^"\']+)', html, re.I)
+            if hreflangs:
+                facts.append(f"hreflang: PRESENT ({', '.join(sorted(set(hreflangs))[:8])})")
+            else:
+                facts.append("hreflang: MISSING")
+
+            # OpenGraph
+            og_count = len(re.findall(r'<meta\s+property=["\']og:', html, re.I))
+            facts.append(f"OpenGraph tags: {og_count} present" if og_count else "OpenGraph tags: MISSING")
+
+            # JSON-LD blocks
+            ld_blocks = re.findall(r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', html, re.S | re.I)
+            ld_types: list[str] = []
+            ld_details: list[str] = []
+            for body in ld_blocks:
+                try:
+                    parsed = json.loads(body.strip())
+                except Exception:
+                    continue
+                items = parsed if isinstance(parsed, list) else [parsed]
+                for it in items:
+                    if not isinstance(it, dict):
+                        continue
+                    t = it.get("@type", "?")
+                    ld_types.append(t if isinstance(t, str) else str(t))
+                    if t == "Product":
+                        offers = it.get("offers", [])
+                        first = offers[0] if isinstance(offers, list) and offers else (offers if isinstance(offers, dict) else {})
+                        brand = it.get("brand")
+                        brand_name = brand.get("name") if isinstance(brand, dict) else brand
+                        offer_keys = sorted(first.keys()) if isinstance(first, dict) else []
+                        ld_details.append(
+                            f"Product schema: brand={brand_name!r}, "
+                            f"{len(offers) if isinstance(offers, list) else 1} offer(s), "
+                            f"offer fields={offer_keys}"
+                        )
+            if ld_types:
+                facts.append(f"JSON-LD: PRESENT — types: {', '.join(sorted(set(ld_types)))}")
+                facts.extend(ld_details)
+            else:
+                facts.append("JSON-LD: MISSING")
+
+            sections.append(f"  [{label}] {url}\n    " + "\n    ".join(facts))
+
+    return "\n\n".join(sections) if sections else "  (audit unavailable)"
+
+
 def _load_history() -> list[dict]:
     if not HISTORY_FILE.exists():
         return []
@@ -268,6 +364,12 @@ async def _generate_daily_report_impl(market_override: str | None = None) -> dic
                 f"rising queries against Keyword Planner volume"
             )
 
+    # Fetch the live storefront state so Atlas can't recommend "add Product
+    # schema" when it already exists, "add hreflang" when it's already wired
+    # up, etc. This is the ground truth — overrides any assumption Atlas
+    # might make from the product list alone.
+    storefront_audit = await _audit_storefront(products)
+
     history = _load_history()
     recent = history[-5:] if history else []
 
@@ -312,6 +414,13 @@ Top Pages:
     user_prompt = f"""Today's date: {now.strftime('%A, %B %d, %Y')}
 Market focus: {market_name} ({market_code})
 Store URL: https://omg.com.cy
+
+LIVE STOREFRONT AUDIT (ground truth — what is actually rendered on the live site RIGHT NOW):
+{storefront_audit}
+
+DO NOT recommend adding any technical SEO element listed as "PRESENT" in the audit above.
+If the audit shows a Product JSON-LD with brand/price/availability/currency, do not suggest "add Product schema". If hreflang tags are present, do not suggest "add hreflang". If meta description exists, do not suggest "add a meta description".
+You MAY recommend IMPROVING what's there (e.g. enriching an existing schema with shippingDetails, rewriting a weak meta description) — but cite what's currently there in the recommendation so the reader can judge.
 
 CURRENT PRODUCTS:
 {product_summary}
