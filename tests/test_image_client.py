@@ -97,8 +97,9 @@ class TestValidateDesignText:
         assert "Missing letter" in result["errors"]
 
     @pytest.mark.asyncio
-    async def test_json_parse_failure_returns_valid(self, tmp_path):
-        """When Claude response can't be parsed as JSON, should default to valid=True."""
+    async def test_json_parse_failure_fails_closed(self, tmp_path):
+        """When Claude response can't be parsed, fail-closed (valid=False) so the
+        downstream retry/drop logic kicks in instead of silently passing a bad image."""
         dummy_image = _make_dummy_image(tmp_path)
         mock_client = _mock_claude_vision("This is not JSON at all")
 
@@ -106,7 +107,8 @@ class TestValidateDesignText:
             from app.agents.image_client import validate_design_text
             result = await validate_design_text(dummy_image, "HELLO")
 
-        assert result["valid"] is True
+        assert result["valid"] is False
+        assert "unparseable" in result["errors"]
 
     @pytest.mark.asyncio
     async def test_json_in_code_fences_parsed(self, tmp_path):
@@ -189,8 +191,9 @@ class TestGenerateDesignWithTextCheck:
         assert mock_validate.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_uses_last_image_after_all_retries_fail(self):
-        """After exhausting retries, should return the last generated image."""
+    async def test_raises_after_all_retries_fail(self):
+        """After exhausting retries, should raise TextValidationError so the caller
+        can drop the proposal instead of shipping a misspelled image."""
         path1 = Path("/fake/design1.png")
         path2 = Path("/fake/design2.png")
 
@@ -200,12 +203,14 @@ class TestGenerateDesignWithTextCheck:
         ):
             mock_validate.return_value = {"valid": False, "found_text": "WRONG", "errors": "Bad text"}
 
-            from app.agents.image_client import generate_design_with_text_check
-            result = await generate_design_with_text_check(
-                concept="A design with text",
-                intended_text="HELLO",
-                max_retries=2,
+            from app.agents.image_client import (
+                generate_design_with_text_check, TextValidationError,
             )
+            with pytest.raises(TextValidationError):
+                await generate_design_with_text_check(
+                    concept="A design with text",
+                    intended_text="HELLO",
+                    max_retries=2,
+                )
 
-        assert result == path2
         assert mock_validate.call_count == 2

@@ -62,7 +62,22 @@ OUTPUT_SCHEMA = """Output as JSON:
       "reasoning": "Why this design would sell well right now"
     }
   ]
-}"""
+}
+
+NAMING RULES (strict):
+- `name`: 2–4 words, evocative, what you'd call the design over coffee. NO trailing
+  "Tee", "T-Shirt", "Design", "Humor", "Typography", "Programmer". NO colons or dashes.
+  Good: "Quantum Cat Paradox", "Digital Detox Mode", "404 Sleep Not Found".
+  Bad:  "404 Sleep Not Found Programmer Humor Tee", "Quantum Cat Paradox Physics Humor Science Tee",
+        "Professional Overthinker Bold Typography Tee", "No Cap Energy Only Bold Typography T-Shirt".
+- `suggested_title`: Real product title a shopper sees. 3–6 words, includes ONE descriptor
+  word like "Tee" or "T-Shirt" at the end (only one). NO chained adjectives like
+  "bold typography humor". Good: "Quantum Cat Paradox Tee", "Digital Detox Mode T-Shirt".
+  Bad: "Quantum Cat Paradox Physics Humor Science Tee" (six adjectives stapled together).
+- `text_on_shirt`: keep it SHORT (1–6 words max if you want DALL-E to spell it right).
+  Long phrases consistently come back misspelled — prefer slogan-type for anything 7+ words
+  so we render with Pillow instead.
+"""
 
 
 def _is_summer_season() -> bool:
@@ -281,9 +296,21 @@ def _build_exclusion_prompt() -> str:
     # Show the last 50 for context
     recent = past[-50:]
     lines = [f"- [{e['date']}] ({e['type']}) {e['name']}: {e['description'][:120]}" for e in recent]
+    # Pull just the names for the strict blacklist — concept name reuse is the
+    # most obvious form of repetition and the easiest for Claude to police.
+    name_blacklist = sorted({e["name"] for e in recent if e.get("name")})
     return (
-        "\n\nIMPORTANT — DO NOT repeat or closely resemble any of these previously generated designs. "
-        "Come up with completely fresh, different ideas:\n" + "\n".join(lines)
+        "\n\nDO NOT REPEAT PAST DESIGNS — strict rules:\n"
+        "1. Never reuse any of these exact concept names, and never produce a paraphrase "
+        "that shares ≥2 distinctive content words with one of them "
+        "(e.g. if 'Digital Detox Mode' is on the list, also avoid 'Digital Detox Club', "
+        "'Digital Detox Weekend', etc. — pick a totally different theme):\n"
+        + "\n".join(f"   - {n}" for n in name_blacklist)
+        + "\n2. Avoid recycled themes that have already appeared multiple times in the last 50 runs "
+        "(coffee philosophy, mediterranean sunset, digital detox, overthinker, "
+        "main character energy, etc.). If you find yourself reaching for one of those, pick something else.\n"
+        "3. Full context of recent designs (date, type, name, description) for reference:\n"
+        + "\n".join(lines)
     )
 
 
@@ -307,18 +334,55 @@ async def _research_trends_impl() -> list[dict]:
     season = _get_season(now.month)
     date_str = now.strftime('%A, %B %d, %Y')
 
-    # Step 1: Research actual t-shirt trends via web search
+    # Step 1: Research actual t-shirt trends via web search.
+    # Rotate the angle by day-of-week so we don't keep dragging back the same
+    # 10–15 trending memes every run (which is how Mango ended up generating
+    # "Digital Detox Mode" / "Mediterranean Sunset Vibes" / "Overthinker" etc.
+    # over and over). Each weekday biases the search toward a different corner
+    # of culture so the seed pool stays fresh.
+    trend_angles = [
+        # Mon
+        "Focus this run on TIKTOK / INSTAGRAM micro-trends, viral sounds, "
+        "and Gen Z slang (delulu, mid, no cap, brainrot, coquette, etc.). "
+        "Find 3–4 specific trending phrases/concepts that would work as a tee.",
+        # Tue
+        "Focus this run on PROGRAMMER / TECH / GAMING humor — recent dev memes, "
+        "AI-era jokes, esports moments, retro gaming nostalgia, IDE/terminal humor. "
+        "Find 3–4 fresh angles that haven't been done to death.",
+        # Wed
+        "Focus this run on WORLD EVENTS, sports, music drops, and pop culture moments "
+        "from the last 2–3 weeks that would translate to a graphic tee. Skip evergreen — "
+        "give me what's burning RIGHT NOW.",
+        # Thu
+        "Focus this run on NICHE SUBCULTURES and hobbies — climbers, runners, cyclists, "
+        "chess players, D&D, F1 fans, vinyl collectors, plant moms, coffee snobs, "
+        "dog-breed-specific humor. Pick 3–4 niches and surface in-jokes from each.",
+        # Fri
+        "Focus this run on GREEK / CYPRIOT / MEDITERRANEAN culture — local slang, "
+        "café/koulouri humor, frappés, panigyria, στραβός γείτονας energy, "
+        "ΕΛ-flavored irony. Find concepts a local would actually screenshot to a friend.",
+        # Sat
+        "Focus this run on STREETWEAR and FASHION-FORWARD aesthetics — what indie brands "
+        "and small-batch labels are putting out, tonal/blackwork designs, retro-futurist, "
+        "Y2K revival mutations, archival-style graphics. Skip the obvious mainstream stuff.",
+        # Sun
+        "Focus this run on TYPOGRAPHIC / SLOGAN tees — short-form jokes and one-liners "
+        "trending on shitpost/meme accounts, screenshot-to-friend energy, deadpan humor, "
+        "absurdist quotes. Find phrases real people are reposting THIS week.",
+    ]
+    angle = trend_angles[now.weekday()]
+
     trend_research = await llm_client.generate_with_search(
         system_prompt="You are a fashion trend researcher specializing in graphic t-shirts and streetwear. Provide concise, actionable trend insights.",
-        user_prompt=f"""Today is {date_str}. Research the CURRENT trending t-shirt designs for {season} 2026.
+        user_prompt=f"""Today is {date_str}. Research CURRENT trending t-shirt designs for {season} 2026.
 
-Search for:
-1. What graphic tee designs are trending right now globally (Etsy, Redbubble, Pinterest, Instagram, TikTok)
-2. Popular t-shirt design styles and aesthetics in 2026
-3. Trending memes, phrases, or cultural moments that would work on t-shirts
-4. What's selling well on the biggest t-shirt marketplaces worldwide
+{angle}
 
-Summarize the top 10-15 specific trends you find, with concrete examples. Focus on what's actually selling NOW globally, not generic advice.""",
+Also briefly cover (1–2 lines each):
+- Anything else genuinely trending across Etsy / Redbubble / Pinterest / Instagram / TikTok this week
+- Memes / phrases / cultural moments that would work on a tee
+
+Summarize what you find with concrete examples. Focus on what's selling/trending NOW — skip evergreen advice and skip anything that's been a meme for 6+ months.""",
         max_tokens=2000,
         temperature=0.5,
     )
@@ -381,6 +445,7 @@ Be specific in the design description so an AI image generator can create it acc
             from app.agents.image_client import (
                 generate_design, generate_text_design,
                 generate_design_with_text_check, remove_background,
+                TextValidationError,
             )
             is_pillow_text = concept.get("type") == "slogan" and concept.get("text_on_shirt")
 
@@ -417,6 +482,13 @@ Be specific in the design description so an AI image generator can create it acc
             proposal = create_proposal("design", concept)
             proposals.append(proposal)
 
+        except TextValidationError as e:
+            # DALL-E couldn't get the text right after all retries — drop the
+            # proposal entirely rather than email a misspelled image.
+            logger.warning(
+                f"Dropping design '{concept.get('name', '?')}' — text validation never passed: {e}"
+            )
+            continue
         except Exception as e:
             logger.error(f"Failed to generate design for '{concept.get('name', '?')}': {e}")
             concept["error"] = str(e)

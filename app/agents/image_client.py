@@ -291,11 +291,17 @@ async def validate_design_text(image_path: Path, intended_text: str = "") -> dic
     try:
         result = json.loads(text.strip())
     except json.JSONDecodeError:
+        # Fail-closed: if we can't parse the validator's response, treat as invalid
+        # so the design either gets retried or dropped, rather than silently passing.
         logger.warning(f"Failed to parse validation response: {text}")
-        result = {"valid": True, "found_text": "", "errors": ""}
+        result = {"valid": False, "found_text": "", "errors": "validator response unparseable"}
 
     logger.info(f"Text validation: valid={result.get('valid')}, errors={result.get('errors', '')}")
     return result
+
+
+class TextValidationError(Exception):
+    """Raised when DALL-E keeps producing misspelled/garbled text after all retries."""
 
 
 async def generate_design_with_text_check(
@@ -304,19 +310,23 @@ async def generate_design_with_text_check(
     style: str = "bold graphic illustration",
     size: str = "1024x1024",
     quality: str = "hd",
-    max_retries: int = 2,
+    max_retries: int = 4,
 ) -> Path:
     """Generate a design via DALL-E, validate text with Claude, and regenerate if wrong.
 
     When intended_text is set: validates that the image text matches it exactly.
     When intended_text is empty: validates that no gibberish/garbled text was
     added by DALL-E (a common artifact). Legible English or no text = pass.
+
+    Raises TextValidationError if no attempt produces a clean image.
     """
     for attempt in range(1, max_retries + 1):
         image_path = await generate_design(concept, style, size, quality)
         validation = await validate_design_text(image_path, intended_text)
 
-        if validation.get("valid", True):
+        # Fail-closed: missing/false `valid` blocks the image. Only an explicit
+        # True from the validator lets us return.
+        if validation.get("valid", False):
             logger.info(f"Text validation passed on attempt {attempt}")
             return image_path
 
@@ -343,8 +353,10 @@ async def generate_design_with_text_check(
                     f"Pure artwork/illustration only — zero text of any kind."
                 )
 
-    logger.warning(f"Text validation failed after {max_retries} attempts, using last image")
-    return image_path
+    raise TextValidationError(
+        f"Text validation failed after {max_retries} attempts; last errors: "
+        f"{validation.get('errors', '')!r}, last text: {validation.get('found_text', '')!r}"
+    )
 
 
 async def remove_background(image_path: Path) -> Path:
