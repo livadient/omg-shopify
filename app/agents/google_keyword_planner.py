@@ -1,6 +1,7 @@
 """Fetch real keyword data from Google Ads Keyword Planner."""
 import logging
 
+from app.agents.google_ads_token import get_refresh_token
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -38,11 +39,12 @@ SEED_KEYWORDS = {
 
 def _get_client():
     """Build authenticated Google Ads client."""
+    refresh_token = get_refresh_token()
     if not all([
         settings.google_ads_developer_token,
         settings.google_ads_client_id,
         settings.google_ads_client_secret,
-        settings.google_ads_refresh_token,
+        refresh_token,
         settings.google_ads_customer_id,
     ]):
         return None
@@ -57,7 +59,7 @@ def _get_client():
         "developer_token": settings.google_ads_developer_token,
         "client_id": settings.google_ads_client_id,
         "client_secret": settings.google_ads_client_secret,
-        "refresh_token": settings.google_ads_refresh_token,
+        "refresh_token": refresh_token,
         "login_customer_id": settings.google_ads_customer_id,
         "use_proto_plus": True,
     })

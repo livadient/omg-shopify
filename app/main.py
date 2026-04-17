@@ -1289,6 +1289,106 @@ async def ranking_history(limit: int = 30):
     return {"reports": get_history(limit)}
 
 
+@app.get("/google-ads/refresh-flow", response_class=HTMLResponse)
+async def google_ads_refresh_flow():
+    """One-click form to regenerate the Google Ads OAuth refresh token.
+
+    The OAuth consent screen is in Testing mode so refresh tokens expire every
+    7 days. This page kicks off the auth flow and accepts the resulting
+    redirect URL, exchanges it for a new refresh token, and persists it.
+    """
+    from urllib.parse import urlencode
+
+    auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode({
+        "response_type": "code",
+        "client_id": settings.google_ads_client_id,
+        "redirect_uri": "http://localhost:9090",
+        "scope": "https://www.googleapis.com/auth/adwords",
+        "access_type": "offline",
+        "prompt": "consent",
+    })
+
+    return HTMLResponse(f"""
+    <html><head><title>Google Ads — Refresh Token</title></head>
+    <body style="font-family:sans-serif;max-width:720px;margin:40px auto;padding:20px;color:#111;">
+        <h1>Google Ads — Refresh Token</h1>
+        <ol style="line-height:1.8;">
+            <li>Click the button below and authorise with the Google account that owns Ads customer <code>{settings.google_ads_customer_id}</code>.</li>
+            <li>You'll be redirected to <code>localhost:9090</code> which won't load — that's expected.</li>
+            <li>Copy the <strong>full URL</strong> from your browser's address bar (starts with <code>http://localhost:9090/?...code=...</code>).</li>
+            <li>Paste it into the form below and click <strong>Save</strong>.</li>
+        </ol>
+
+        <p style="margin:24px 0;">
+            <a href="{auth_url}" target="_blank" style="display:inline-block;padding:12px 24px;background:#2563eb;color:white;text-decoration:none;border-radius:6px;font-weight:bold;">
+                1. Open Google authorisation
+            </a>
+        </p>
+
+        <form method="POST" action="/google-ads/refresh-flow/exchange" style="margin-top:32px;">
+            <label for="redirect_url" style="display:block;font-weight:bold;margin-bottom:8px;">2. Paste the redirect URL here:</label>
+            <input
+                type="text"
+                id="redirect_url"
+                name="redirect_url"
+                placeholder="http://localhost:9090/?code=4/0A...&scope=..."
+                style="width:100%;padding:12px;font-family:monospace;font-size:13px;border:1px solid #d1d5db;border-radius:6px;"
+                required
+            >
+            <button type="submit" style="margin-top:16px;padding:12px 24px;background:#16a34a;color:white;border:0;border-radius:6px;font-weight:bold;cursor:pointer;font-size:14px;">
+                Save new refresh token
+            </button>
+        </form>
+    </body></html>
+    """)
+
+
+@app.post("/google-ads/refresh-flow/exchange", response_class=HTMLResponse)
+async def google_ads_refresh_exchange(redirect_url: str = Form(...)):
+    """Exchange the authorisation code from the redirect URL for a refresh token."""
+    from urllib.parse import parse_qs, urlparse
+
+    from app.agents.google_ads_token import save_refresh_token
+
+    code = parse_qs(urlparse(redirect_url).query).get("code", [None])[0]
+    if not code:
+        return HTMLResponse(
+            "<p style='color:#dc2626;font-family:sans-serif;'>No <code>code</code> parameter found in the URL. Make sure you copied the full address bar URL.</p>",
+            status_code=400,
+        )
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post("https://oauth2.googleapis.com/token", data={
+            "code": code,
+            "client_id": settings.google_ads_client_id,
+            "client_secret": settings.google_ads_client_secret,
+            "redirect_uri": "http://localhost:9090",
+            "grant_type": "authorization_code",
+        })
+
+    data = resp.json()
+    refresh_token = data.get("refresh_token")
+    if not refresh_token:
+        return HTMLResponse(
+            f"<p style='color:#dc2626;font-family:sans-serif;'>Token exchange failed: <pre>{data}</pre></p>",
+            status_code=400,
+        )
+
+    save_refresh_token(refresh_token)
+
+    masked = refresh_token[:10] + "..." + refresh_token[-6:]
+    return HTMLResponse(f"""
+    <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
+        <h1 style="color:#16a34a;">Refresh token saved</h1>
+        <p>New token (<code>{masked}</code>) is live for both Atlas's Keyword Planner and campaign manager — no restart needed.</p>
+        <p style="color:#6b7280;font-size:13px;margin-top:24px;">Next expiry: ~7 days from now (Testing-mode OAuth limit).</p>
+        <p style="margin-top:24px;">
+            <a href="/google-ads/refresh-flow" style="color:#2563eb;">Back to refresh flow</a>
+        </p>
+    </body></html>
+    """)
+
+
 @app.get("/agents/feedback/form", response_class=HTMLResponse)
 async def feedback_form(agent: str = ""):
     """HTML form to submit feedback to any agent."""
