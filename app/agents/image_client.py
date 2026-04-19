@@ -4,7 +4,6 @@ import logging
 import random
 from pathlib import Path
 
-import httpx
 from openai import AsyncOpenAI
 
 from app.config import settings
@@ -63,7 +62,10 @@ async def generate_design(
     size: str = "1024x1024",
     quality: str = "hd",
 ) -> Path:
-    """Generate a t-shirt design using DALL-E 3 and save to static/.
+    """Generate a t-shirt design using gpt-image-1 (GPT-4o native image gen,
+    same model ChatGPT uses) and save to static/. Text rendering and general
+    prompt adherence are materially better than dall-e-3, especially for
+    slogan tees where the text has to match `text_on_shirt` verbatim.
 
     Returns the path to the saved PNG file.
     """
@@ -80,34 +82,33 @@ async def generate_design(
         "No copyrighted characters or logos. Centered composition."
     )
 
-    logger.info(f"Generating design: {concept[:80]}...")
+    # Map legacy dall-e-3 quality values onto gpt-image-1's scale.
+    quality_map = {"hd": "high", "standard": "medium", "low": "low",
+                   "medium": "medium", "high": "high", "auto": "auto"}
+    gpt_quality = quality_map.get(quality, "high")
+
+    logger.info(f"Generating design (gpt-image-1, {gpt_quality}): {concept[:80]}...")
 
     response = await client.images.generate(
-        model="dall-e-3",
+        model="gpt-image-1",
         prompt=prompt,
         size=size,
-        quality=quality,
+        quality=gpt_quality,
         n=1,
-        response_format="url",
     )
 
-    image_url = response.data[0].url
-    revised_prompt = response.data[0].revised_prompt
-    logger.info(f"DALL-E revised prompt: {revised_prompt[:100]}...")
+    # gpt-image-1 returns base64 directly, no URL download step.
+    b64 = response.data[0].b64_json
+    if not b64:
+        raise RuntimeError("gpt-image-1 returned no image data")
 
-    # Download the image
-    async with httpx.AsyncClient() as http:
-        img_resp = await http.get(image_url, timeout=30)
-        img_resp.raise_for_status()
-
-    # Save to static/proposals/
     proposals_dir = STATIC_DIR / "proposals"
     proposals_dir.mkdir(exist_ok=True)
 
     import uuid
     filename = f"design_{uuid.uuid4().hex[:8]}.png"
     filepath = proposals_dir / filename
-    filepath.write_bytes(img_resp.content)
+    filepath.write_bytes(base64.b64decode(b64))
 
     logger.info(f"Design saved: {filepath}")
     return filepath
