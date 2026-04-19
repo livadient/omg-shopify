@@ -284,16 +284,39 @@ async def validate_design_text(image_path: Path, intended_text: str = "") -> dic
     )
 
     import json
+    import re
     text = response.content[0].text
-    if "```json" in text:
-        text = text.split("```json")[1].split("```")[0]
-    elif "```" in text:
-        text = text.split("```")[1].split("```")[0]
-    try:
-        result = json.loads(text.strip())
-    except json.JSONDecodeError:
-        # Fail-closed: if we can't parse the validator's response, treat as invalid
-        # so the design either gets retried or dropped, rather than silently passing.
+
+    # Find the last balanced {...} in the response so prepended prose
+    # ("Here's my analysis: {...}") or trailing commentary doesn't break the
+    # parser. Markdown fences are stripped first so they don't confuse the
+    # brace counter.
+    stripped = re.sub(r"```(?:json)?", "", text)
+    candidates: list[str] = []
+    depth = 0
+    start = -1
+    for i, ch in enumerate(stripped):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth > 0:
+            depth -= 1
+            if depth == 0 and start >= 0:
+                candidates.append(stripped[start : i + 1])
+                start = -1
+
+    result: dict | None = None
+    for blob in reversed(candidates):  # try the last one first
+        try:
+            parsed = json.loads(blob)
+            if isinstance(parsed, dict) and "valid" in parsed:
+                result = parsed
+                break
+        except json.JSONDecodeError:
+            continue
+
+    if result is None:
         logger.warning(f"Failed to parse validation response: {text}")
         result = {"valid": False, "found_text": "", "errors": "validator response unparseable"}
 
