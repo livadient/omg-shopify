@@ -213,7 +213,7 @@ async def _generate_marketing_scenes(
     design_path: Path,
     tee_color: str,
 ) -> dict[str, Path]:
-    """Compose the 6 marketing scenes by pasting the transparent design
+    """Compose all marketing scenes by pasting the transparent design
     PNG directly onto blank-tee model photos. Returns label → path dict.
 
     Pipeline lives in app.agents.marketing_pipeline so the Phase 3 backfill
@@ -221,8 +221,15 @@ async def _generate_marketing_scenes(
     design (not a TJ-mockup silhouette) so the model's actual tee shows
     through — pasting a tee silhouette over the model's tee creates a
     visible "tee on tee" edge.
+
+    Generates whatever scenes are defined in
+    `marketing_pipeline.PRINT_GEOMETRY`. As of 2026-04-26 that's 8 scenes:
+    6 back-focused (closeup/fullbody/product/hanger × m/f) plus 2 front
+    closeups (01_closeup_front, 01_closeup_front_male) — so picking a
+    Front variant on the product page swaps the gallery to a lifestyle
+    chest shot instead of just the TJ Qstomizer mockup.
     """
-    from app.agents.marketing_pipeline import compose_marketing_scenes
+    from app.agents.marketing_pipeline import compose_marketing_scenes, PRINT_GEOMETRY
 
     slug = handle.replace("-", "_")
     scene_dir = STATIC_DIR / "proposals" / slug
@@ -231,7 +238,7 @@ async def _generate_marketing_scenes(
     generated = await compose_marketing_scenes(
         design_path=design_path, out_dir=scene_dir, tee_color=tee_color,
     )
-    logger.info(f"Composed {len(generated)}/6 marketing scenes for {handle}")
+    logger.info(f"Composed {len(generated)}/{len(PRINT_GEOMETRY)} marketing scenes for {handle}")
     return generated
 
 SYSTEM_PROMPT_BASE = """You are a creative director and trend researcher for OMG (omg.com.cy), an online t-shirt brand. Your target market is ages 16-45 globally.
@@ -966,34 +973,44 @@ async def execute_approval(proposal_id: str, version: str = "original") -> dict:
     all_male = groups[("male", "front")] + groups[("male", "back")]
     all_back = groups[("male", "back")] + groups[("female", "back")]
 
-    # Unified upload plan (shared shape with scripts/refresh_all_product_images.py):
-    # 1) TJ male back mockup = card thumbnail
-    # 2) TJ female back mockup = card hover image
-    # 3) Male lifestyle (selecting Male swaps gallery to male model)
-    # 4) Female lifestyle
-    # 5) Flat-lay + hanger (unisex)
-    # 6) Remaining TJ mockups
-    # Gender-variant linking is preserved so the gallery swaps to the
-    # matching shot when Male / Female / Front / Back is selected.
+    # Unified upload plan — order matches the standard sequence applied
+    # to all live products via scripts/refresh_all_product_images.py.
+    # Position determines collection-card hover behavior + variant gallery
+    # swap order. Gender+Placement variant linking is preserved so picking
+    # Male/Female × Front/Back on the product page swaps the gallery to
+    # the matching shot.
+    #
+    # Standard sequence:
+    #   1: TJ male back        → male back vars  (card thumbnail)
+    #   2: 01_closeup_back     → all female      (card hover image)
+    #   3: TJ female back      → female back vars
+    #   4: TJ male front       → male front vars
+    #   5: 01_closeup_front_male → male front vars (lifestyle for male front)
+    #   6: TJ female front     → female front vars
+    #   7: 01_closeup_front    → female front vars (lifestyle for female front)
+    #   8: 02_fullbody_back    → all female
+    #   9: 03_product_back     → unlinked (gender-neutral)
+    #  10: 04_hanger_back      → unlinked
+    #  11: 01_closeup_back_male → all male
+    #  12: 02_fullbody_back_male → all male
+    #
     # NOTE: For IMAGE/illustration designs (aspect >= 0.4), the transparent
     # Design Artwork is appended as the LAST product image after the upload
     # plan below — so customers can see the artwork standalone. Skipped for
-    # text/slogan designs (the standalone slogan PNG isn't visually
-    # interesting). See the post-loop block.
-    # Only the 4 TJ mockups carry variant_ids — Shopify enforces
-    # one-variant-per-image, so linking a variant to a lifestyle shot would
-    # silently block the TJ mockup from claiming that variant.
+    # text/slogan designs.
     upload_plan: list[tuple[Path | None, list[int] | None, str]] = [
         (mockup_paths.get(("male", "back")), groups[("male", "back")] or None, f"{title} — TJ male back mockup"),
+        (scenes.get("01_closeup_back"), all_female or None, f"{title} — female closeup back"),
         (mockup_paths.get(("female", "back")), groups[("female", "back")] or None, f"{title} — TJ female back mockup"),
-        (scenes.get("01_closeup_back_male"), None, f"{title} — male closeup back"),
-        (scenes.get("02_fullbody_back_male"), None, f"{title} — male fullbody back"),
-        (scenes.get("01_closeup_back"), None, f"{title} — female closeup back"),
-        (scenes.get("02_fullbody_back"), None, f"{title} — female fullbody back"),
+        (mockup_paths.get(("male", "front")), groups[("male", "front")] or None, f"{title} — TJ male front mockup"),
+        (scenes.get("01_closeup_front_male"), groups[("male", "front")] or None, f"{title} — male closeup front"),
+        (mockup_paths.get(("female", "front")), groups[("female", "front")] or None, f"{title} — TJ female front mockup"),
+        (scenes.get("01_closeup_front"), groups[("female", "front")] or None, f"{title} — female closeup front"),
+        (scenes.get("02_fullbody_back"), all_female or None, f"{title} — female fullbody back"),
         (scenes.get("03_product_back"), None, f"{title} — back flat-lay"),
         (scenes.get("04_hanger_back"), None, f"{title} — back hanger"),
-        (mockup_paths.get(("male", "front")), groups[("male", "front")] or None, f"{title} — TJ male front mockup"),
-        (mockup_paths.get(("female", "front")), groups[("female", "front")] or None, f"{title} — TJ female front mockup"),
+        (scenes.get("01_closeup_back_male"), all_male or None, f"{title} — male closeup back"),
+        (scenes.get("02_fullbody_back_male"), all_male or None, f"{title} — male fullbody back"),
     ]
     uploaded = 0
     for path, vids, alt in upload_plan:

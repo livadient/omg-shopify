@@ -100,6 +100,32 @@ def _scene_prompts(tee_color: str) -> dict[str, str]:
             f"background, professional fashion e-commerce product "
             f"photography, photorealistic, sharp focus, 4k."
         ),
+        "01_closeup_front": (
+            f"Medium close-up lifestyle e-commerce photograph of a young "
+            f"woman facing the camera. The frame shows her from just below "
+            f"the chin down to her hips — her face is NOT visible, cropped "
+            f"above the chin so the focus is the t-shirt. Her hair is "
+            f"pulled back so it doesn't cover the front of the t-shirt. "
+            f"She wears a plain {fabric} crew-neck cotton t-shirt with the "
+            f"front chest panel completely unobstructed.\n\n{no_print}\n\n"
+            f"Soft natural daylight, clean minimalist light-grey studio "
+            f"background, professional fashion e-commerce product "
+            f"photography, photorealistic, sharp focus, 4k."
+        ),
+        "01_closeup_front_male": (
+            f"Medium close-up lifestyle e-commerce photograph of a fit, "
+            f"semi-muscular young man facing the camera. The frame shows "
+            f"him from just below the chin down to his hips — his face is "
+            f"NOT visible, cropped above the chin so the focus is the "
+            f"t-shirt. His short dark hair doesn't obstruct the t-shirt. "
+            f"He wears a plain {fabric} crew-neck cotton t-shirt that "
+            f"fits well across his chest and shoulders (athletic, "
+            f"gym-regular, not bodybuilder), with the front chest panel "
+            f"completely unobstructed.\n\n{no_print}\n\n"
+            f"Soft natural daylight, clean minimalist light-grey studio "
+            f"background, professional fashion e-commerce product "
+            f"photography, photorealistic, sharp focus, 4k."
+        ),
         "02_fullbody_back_male": (
             f"Full-body lifestyle e-commerce photograph of a fit, "
             f"semi-muscular young man walking away from the camera, back "
@@ -139,6 +165,13 @@ PRINT_GEOMETRY: dict[str, dict] = {
     "04_hanger_back":       {"top_offset_pct": 0.18, "width_pct": 0.42, "image_width_pct": 0.40, "image_max_dim_pct": 0.30},
     "01_closeup_back_male": {"top_offset_pct": 0.10, "width_pct": 0.50, "image_width_pct": 0.45, "image_max_dim_pct": 0.32},
     "02_fullbody_back_male":{"top_offset_pct": 0.10, "width_pct": 0.52, "image_width_pct": 0.24, "image_max_dim_pct": 0.18},
+    # Front closeups — design printed on chest. Same width sizing as back
+    # closeups; vertical position uses same ratio (chest panel is similar
+    # in proportion to back panel).
+    "01_closeup_front":     {"top_offset_pct": 0.10, "width_pct": 0.50, "image_width_pct": 0.45, "image_max_dim_pct": 0.32},
+    # Male front closeup: gpt-image-1 frames male closeups looser than female,
+    # so chest occupies less of the bbox. Bump size to compensate.
+    "01_closeup_front_male":{"top_offset_pct": 0.10, "width_pct": 0.50, "image_width_pct": 0.58, "image_max_dim_pct": 0.40},
 }
 
 
@@ -195,17 +228,17 @@ async def _detect_shirt_bbox(
     img_b64 = base64.b64encode(image_path.read_bytes()).decode()
     prompt = (
         f"This image is 1024x1024 pixels. Find the bounding box of the "
-        f"visible {fabric.upper()} T-SHIRT TORSO/BACK fabric only. Be STRICT: "
+        f"visible {fabric.upper()} T-SHIRT TORSO fabric only (front chest "
+        f"OR back panel — whichever is facing the camera). Be STRICT: "
         f"every pixel inside the box must be {fabric} shirt fabric.\n\n"
         f"EXCLUDE everything else: the collar/neckline band, the shoulder "
-        f"seams, the sleeves, the wearer's hair (including any bun or "
-        f"ponytail that sits over the upper back), neck skin, face, arms, "
-        f"pants, and background. If a bun or hair obstructs the upper back, "
-        f"the TOP of the box (y1) must start BELOW that hair, on clean "
-        f"fabric. The TOP must also start BELOW the collar band, on clean "
-        f"torso fabric — NOT on the collar itself.\n\n"
+        f"seams, the sleeves, the wearer's hair, hands, neck skin, face, "
+        f"arms, pants, and background. If hair obstructs any part of the "
+        f"torso, the TOP of the box (y1) must start BELOW that hair, on "
+        f"clean fabric. The TOP must also start BELOW the collar band, on "
+        f"clean torso fabric — NOT on the collar itself.\n\n"
         f"ALSO return spine_x: the x-coordinate of the vertical centerline "
-        f"of the visible back panel — exactly halfway between the two "
+        f"of the visible torso panel — exactly halfway between the two "
         f"shoulder seams (for flat-lay/hanger shots, the vertical "
         f"centerline of the shirt). This is where a centered print would "
         f"sit. spine_x is NOT necessarily the bbox midpoint — they differ "
@@ -326,12 +359,14 @@ def _compute_print_rect(
     sx1, sy1, sx2, sy2 = shirt
     sw, sh = sx2 - sx1, sy2 - sy1
     if image_max_dim_pct is not None:
-        # Size so max(pw, ph) == image_max_dim_pct * image_size — used for
-        # image/illustration designs (aspect ratio ~ 1.0) where width-only
-        # sizing would make the print's height blow up well past TJ's
-        # ~35% print area.
-        max_dim = image_size * image_max_dim_pct
-        pw = int(max_dim / max(1.0, design_aspect))
+        # Size print width as image_max_dim_pct of the image — same as
+        # image_width_pct semantically, just at the smaller scale we use
+        # for image/illustration designs vs text designs. Originally this
+        # capped max(pw,ph) but that made tall designs (e.g. astous,
+        # aspect 1.4) render visibly narrower than square designs at the
+        # same setting. Width-based sizing keeps visual print width
+        # consistent across square and tall image designs.
+        pw = int(image_size * image_max_dim_pct)
     elif image_width_pct is not None:
         pw = int(image_size * image_width_pct)
     else:
