@@ -975,8 +975,11 @@ async def execute_approval(proposal_id: str, version: str = "original") -> dict:
     # 6) Remaining TJ mockups
     # Gender-variant linking is preserved so the gallery swaps to the
     # matching shot when Male / Female / Front / Back is selected.
-    # NOTE: the transparent Design Artwork is intentionally NOT uploaded — it
-    # was only useful as a local backup. Source of truth is static/design_*.png.
+    # NOTE: For IMAGE/illustration designs (aspect >= 0.4), the transparent
+    # Design Artwork is appended as the LAST product image after the upload
+    # plan below — so customers can see the artwork standalone. Skipped for
+    # text/slogan designs (the standalone slogan PNG isn't visually
+    # interesting). See the post-loop block.
     # Only the 4 TJ mockups carry variant_ids — Shopify enforces
     # one-variant-per-image, so linking a variant to a lifestyle shot would
     # silently block the TJ mockup from claiming that variant.
@@ -1001,6 +1004,37 @@ async def execute_approval(proposal_id: str, version: str = "original") -> dict:
             uploaded += 1
         except Exception as e:
             logger.warning(f"Upload {alt} failed: {e}")
+
+    # For IMAGE/illustration designs (aspect >= 0.4 — square or tall artwork
+    # like mushroom, penguin, astous), also upload the transparent design PNG
+    # itself as the LAST product image so customers can see the artwork
+    # standalone. Skipped for TEXT/slogan designs (wide and short, aspect <
+    # 0.4) since the artwork-on-its-own isn't visually interesting for plain
+    # typography.
+    try:
+        from PIL import Image as _Img
+        with _Img.open(design_path_obj) as _di:
+            _bbox = _di.convert("RGBA").getbbox()
+        if _bbox:
+            _w = _bbox[2] - _bbox[0]
+            _h = _bbox[3] - _bbox[1]
+            _aspect = _h / _w if _w else 1.0
+            if _aspect >= 0.4:
+                try:
+                    await upload_product_image(
+                        product_id, design_path_obj,
+                        alt=f"{title} — design artwork",
+                        variant_ids=None,
+                    )
+                    uploaded += 1
+                    logger.info(f"Uploaded design artwork as last image (image design, aspect={_aspect:.2f})")
+                except Exception as e:
+                    logger.warning(f"Design artwork upload failed: {e}")
+            else:
+                logger.info(f"Skipping design artwork upload (text design, aspect={_aspect:.2f})")
+    except Exception as e:
+        logger.warning(f"Design aspect detection failed, skipping design artwork upload: {e}")
+
     logger.info(f"Uploaded {uploaded} images to product {product_id}")
 
     update_status(proposal_id, "approved")
