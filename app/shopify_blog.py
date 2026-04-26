@@ -85,3 +85,27 @@ async def create_article(
         article = resp.json().get("article", {})
         logger.info(f"Published article: {article.get('id')} — {title}")
         return article
+
+
+async def update_article(
+    article_id: int | str,
+    body_html: str,
+    blog_id: str | None = None,
+) -> dict:
+    """Update an existing article's body_html."""
+    bid = blog_id or settings.omg_shopify_blog_id
+    if not bid:
+        raise ValueError("No blog_id configured. Set OMG_SHOPIFY_BLOG_ID in .env")
+
+    payload = {"article": {"id": int(article_id), "body_html": body_html}}
+    async with httpx.AsyncClient() as client:
+        resp = await client.put(
+            _admin_url(f"blogs/{bid}/articles/{article_id}.json"),
+            headers=_headers(),
+            json=payload,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        article = resp.json().get("article", {})
+        logger.info(f"Updated article: {article.get('id')} — {article.get('title', '')}")
+        return article

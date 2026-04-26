@@ -74,7 +74,30 @@ After each design image is generated and background-removed, the system runs Qst
 - **Male (Classic Tee)** - size L
 - **Female (Women's Tee)** - size M
 
+Each pre-cache run uses:
+- **`color`** — the `tee_color` the LLM picked on the concept (coerced via `_normalize_tee_color` to one of `White | Black | Navy Blue | Red | Royal Blue | Sport Grey`, default `White` if missing or unrecognised).
+- **`vertical_offset=-0.25`** (default across the whole Qstomizer automation) — nudges the design to the upper back. The Konva clamp prevents tall multi-line designs from clipping the collar. See `doc/qstomizer-automation.md` for the mechanics.
+
 This pre-generates and caches mockup images so that when the user approves a design, the product creation is near-instant (no need to wait for Playwright). Cached mockups are stored alongside the proposal data.
+
+## Tee Color (`tee_color`)
+
+Mango's JSON schema includes `tee_color` (enum over the 6 Qstomizer colors). The LLM picks based on legibility:
+- Light artwork (white text, pastels, pale illustrations) → `Black`
+- Dark artwork (black text, dark ink) → `White`
+- Slogan style with a signature fabric (e.g. maroon italic on white) → match the style
+- Default `White` when in doubt
+
+On approval, the value flows `concept.tee_color` → `execute_approval` → `create_mappings_for_product(color=...)` → persisted on the `ProductMapping` in `product_mappings.json`. At order time, the webhook handler reads `mapping.color` and threads it to `customize_and_add_to_cart` so the cart is built on the correct fabric.
+
+## Slogan Hierarchy Template
+
+For `slogan`-type designs, the LLM is instructed to embed a literal `\n` in `text_on_shirt` at the natural punchline break (e.g. `"DON'T TEMPT ME\nI'LL SAY YES"`, `"TOLD HER SHE'S THE ONE\nNOT THE ONLY ONE"`). `image_client.generate_text_design` then applies the Kyriaki-approved template:
+- **Modest print scale** — text fills ~55% of the 1024×1024 canvas width, not billboard 80%+
+- **Two-line hierarchy** — top line bold condensed caps (Impact / Liberation-Sans-Bold / Times-Bold), sub line regular-weight sans (Arial / Liberation-Sans-Regular / DejaVu-Sans) at 45% of top size for visible size+weight contrast
+- Font pairs live in `TEXT_DESIGN_HIERARCHY_FONTS`; one is picked randomly per run so successive slogan tees look distinct
+- Color, treatment (plain/outline/shadow) and case (uppercase 70% of the time) are randomised as before
+- Single-line slogans render at the same modest scale without hierarchy
 
 ## Shopify Product Creation
 

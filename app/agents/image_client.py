@@ -48,6 +48,44 @@ TEXT_DESIGN_FONTS = [
     "C:/Windows/Fonts/COURBD.TTF",
 ]
 
+# Two-line-hierarchy templates (matches Kyriaki-approved "Don't Tempt Me"
+# style: bold condensed top + visibly thinner/smaller regular-weight sub).
+# Each entry picks a (top, sub) font pair so the weight contrast reads
+# even at small print sizes. First-available wins per entry.
+TEXT_DESIGN_HIERARCHY_FONTS: list[tuple[list[str], list[str]]] = [
+    (
+        ["C:/Windows/Fonts/impact.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"],
+        ["C:/Windows/Fonts/arial.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"],
+    ),
+    (
+        ["C:/Windows/Fonts/arialbd.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+         "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"],
+        ["C:/Windows/Fonts/arial.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+         "/usr/share/fonts/truetype/freefont/FreeSans.ttf"],
+    ),
+    (
+        ["C:/Windows/Fonts/timesbd.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"],
+        ["C:/Windows/Fonts/arial.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"],
+    ),
+]
+
+
+def _first_existing(candidates: list[str]) -> str | None:
+    for fp in candidates:
+        if Path(fp).exists():
+            return fp
+    return None
+
 
 def _get_client() -> AsyncOpenAI:
     global _client
@@ -121,18 +159,37 @@ async def generate_text_design(
 ) -> Path:
     """Generate a text-only design using Pillow typography.
 
-    Picks a random color, font, treatment (plain/outline/shadow) and case
-    on each call so successive slogan tees feel visually distinct instead of
-    all being identical black-on-white Liberation Sans blocks.
+    Follows the Kyriaki-approved "Don't Tempt Me" template (2026-04-22):
+    modest print scale (~55% of canvas width, generous fabric around all
+    sides), and for two-line slogans a visible size+weight hierarchy —
+    bold condensed caps on top + noticeably smaller thinner regular-weight
+    sub line. Single-line slogans render at the same modest scale.
+
+    Picks a random color, hierarchy font pair, treatment (plain/outline/
+    shadow) and case on each call so successive slogan tees feel visually
+    distinct instead of all being identical.
 
     Returns the path to the saved PNG file.
     """
     from PIL import Image, ImageDraw, ImageFont
 
-    # Randomized look — color, font, treatment, case
+    # Randomized look — color, font pair, treatment, case
     color_hex = random.choice(TEXT_DESIGN_COLORS)
-    available_fonts = [fp for fp in TEXT_DESIGN_FONTS if Path(fp).exists()]
-    font_path = random.choice(available_fonts) if available_fonts else None
+    # Pick a (top, sub) font pair; skip pairs where neither font is available
+    viable_pairs: list[tuple[str, str]] = []
+    for top_cands, sub_cands in TEXT_DESIGN_HIERARCHY_FONTS:
+        top_fp = _first_existing(top_cands)
+        sub_fp = _first_existing(sub_cands)
+        if top_fp and sub_fp:
+            viable_pairs.append((top_fp, sub_fp))
+    if viable_pairs:
+        top_font_path, sub_font_path = random.choice(viable_pairs)
+    else:
+        # Fallback to the old any-bold font pool (used on very bare Linux)
+        available_fonts = [fp for fp in TEXT_DESIGN_FONTS if Path(fp).exists()]
+        top_font_path = random.choice(available_fonts) if available_fonts else None
+        sub_font_path = top_font_path
+
     treatment = random.choices(
         ["plain", "outline", "shadow"], weights=[70, 15, 15], k=1
     )[0]
@@ -140,84 +197,110 @@ async def generate_text_design(
 
     logger.info(
         f"Text design look: color={color_hex} treatment={treatment} "
-        f"upper={use_uppercase} font={Path(font_path).name if font_path else 'default'}"
+        f"upper={use_uppercase} "
+        f"top_font={Path(top_font_path).name if top_font_path else 'default'} "
+        f"sub_font={Path(sub_font_path).name if sub_font_path else 'default'}"
     )
 
     img = Image.new("RGBA", size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # Split text into lines (respect explicit newlines, otherwise wrap long lines)
+    # Respect explicit newlines; no auto-wrap for long single lines — the
+    # LLM is instructed to put the hierarchy break in the text, and an
+    # auto-wrap mid-line would flatten the top/sub distinction.
     raw = text.upper() if use_uppercase else text
-    lines = raw.split("\n") if "\n" in raw else [raw]
-    if len(lines) == 1 and len(lines[0]) > 20:
-        words = lines[0].split()
-        wrapped: list[str] = []
-        current = ""
-        for w in words:
-            test = f"{current} {w}".strip()
-            if len(test) > 18 and current:
-                wrapped.append(current)
-                current = w
-            else:
-                current = test
-        if current:
-            wrapped.append(current)
-        lines = wrapped
+    lines = raw.split("\n")
 
-    # Find the largest font size that fits inside the canvas
-    margin = 80
-    max_w = size[0] - margin * 2
-    max_h = size[1] - margin * 2
-    font_size = 200
-    final_font = None
-    while font_size > 20:
-        if not font_path:
-            final_font = ImageFont.load_default()
-            break
-        test_font = ImageFont.truetype(font_path, font_size)
-        line_bboxes = [draw.textbbox((0, 0), line, font=test_font) for line in lines]
-        total_w = max(bb[2] - bb[0] for bb in line_bboxes)
-        line_height = max(bb[3] - bb[1] for bb in line_bboxes)
-        total_h = line_height * len(lines) + (len(lines) - 1) * (font_size * 0.3)
-        if total_w <= max_w and total_h <= max_h:
-            final_font = test_font
-            break
-        font_size -= 4
+    # Modest print scale — text fills ~55% of the canvas width, leaving
+    # generous fabric margin on all sides. This matches Kyriaki's
+    # "small modest caption" feedback and keeps the print chest-pocket-
+    # sized rather than billboard-sized.
+    text_width_ratio = 0.55
+    max_text_w = int(size[0] * text_width_ratio)
+    max_text_h = int(size[1] * 0.70)
 
-    if final_font is None:
-        final_font = (
-            ImageFont.truetype(font_path, font_size) if font_path else ImageFont.load_default()
-        )
+    # Sub line should read as noticeably smaller AND thinner than top.
+    # 0.45 is the ratio Kyriaki approved on the DTM style (top=Impact,
+    # sub=Arial Regular at 45%).
+    sub_to_top_ratio = 0.45
 
-    # Centering math
-    line_bboxes = [draw.textbbox((0, 0), line, font=final_font) for line in lines]
-    line_height = max(bb[3] - bb[1] for bb in line_bboxes)
-    spacing = int(font_size * 0.3)
-    total_height = line_height * len(lines) + spacing * (len(lines) - 1)
-    y_start = (size[1] - total_height) // 2
+    def _load(fp: str | None, sz: int):
+        if not fp:
+            return ImageFont.load_default()
+        return ImageFont.truetype(fp, sz)
 
-    # Draw each line centered with the chosen treatment
-    for i, line in enumerate(lines):
-        bbox = draw.textbbox((0, 0), line, font=final_font)
-        text_w = bbox[2] - bbox[0]
-        x = (size[0] - text_w) // 2
-        y = y_start + i * (line_height + spacing)
+    # Find the largest top-line font size that fits within max_text_w /
+    # max_text_h when combined with sub (if present).
+    top_size = 400
+    top_font = sub_font = None
+    top_bb = sub_bb = None
+    tot_h = 0
+    while top_size > 20:
+        top_font = _load(top_font_path, top_size)
+        top_bb = draw.textbbox((0, 0), lines[0], font=top_font)
+        top_w = top_bb[2] - top_bb[0]
+        top_h = top_bb[3] - top_bb[1]
 
+        if len(lines) > 1:
+            sub_size = max(1, int(top_size * sub_to_top_ratio))
+            sub_font = _load(sub_font_path, sub_size)
+            sub_bb = draw.textbbox((0, 0), lines[1], font=sub_font)
+            sub_w = sub_bb[2] - sub_bb[0]
+            sub_h = sub_bb[3] - sub_bb[1]
+            gap = int(top_size * 0.18)
+            tot_h = top_h + gap + sub_h
+            if max(top_w, sub_w) <= max_text_w and tot_h <= max_text_h:
+                break
+        else:
+            sub_font = None
+            tot_h = top_h
+            if top_w <= max_text_w and top_h <= max_text_h:
+                break
+        top_size -= 6
+
+    def _draw_line(line: str, font, x: int, y: int):
         if treatment == "shadow":
-            offset = max(4, font_size // 30)
-            draw.text(
-                (x + offset, y + offset), line,
-                fill=(0, 0, 0, 110), font=final_font,
-            )
-            draw.text((x, y), line, fill=color_hex, font=final_font)
+            offset = max(4, top_size // 30)
+            draw.text((x + offset, y + offset), line, fill=(0, 0, 0, 110), font=font)
+            draw.text((x, y), line, fill=color_hex, font=font)
         elif treatment == "outline":
-            stroke_w = max(2, font_size // 40)
+            stroke_w = max(2, top_size // 40)
             draw.text(
-                (x, y), line, fill=color_hex, font=final_font,
+                (x, y), line, fill=color_hex, font=font,
                 stroke_width=stroke_w, stroke_fill="black",
             )
         else:
-            draw.text((x, y), line, fill=color_hex, font=final_font)
+            draw.text((x, y), line, fill=color_hex, font=font)
+
+    cx = size[0] / 2
+    y_start = (size[1] - tot_h) / 2
+    top_w = top_bb[2] - top_bb[0]
+    top_h = top_bb[3] - top_bb[1]
+    _draw_line(
+        lines[0], top_font,
+        int(cx - top_w / 2 - top_bb[0]),
+        int(y_start - top_bb[1]),
+    )
+    if len(lines) > 1 and sub_font and sub_bb:
+        gap = int(top_size * 0.18)
+        sub_w = sub_bb[2] - sub_bb[0]
+        _draw_line(
+            lines[1], sub_font,
+            int(cx - sub_w / 2 - sub_bb[0]),
+            int(y_start + top_h + gap - sub_bb[1]),
+        )
+        # If there are more than 2 lines, treat the rest as extra sub
+        # lines at the same sub size — stacked below.
+        extra_y = y_start + top_h + gap - sub_bb[1] + (sub_bb[3] - sub_bb[1]) + gap
+        for extra_line in lines[2:]:
+            extra_bb = draw.textbbox((0, 0), extra_line, font=sub_font)
+            extra_w = extra_bb[2] - extra_bb[0]
+            _draw_line(
+                extra_line, sub_font,
+                int(cx - extra_w / 2 - extra_bb[0]),
+                int(extra_y - extra_bb[1]),
+            )
+            extra_y += (extra_bb[3] - extra_bb[1]) + gap
 
     # Save
     proposals_dir = STATIC_DIR / "proposals"

@@ -129,7 +129,7 @@ All t-shirts have three variant options: **Gender** (Male/Female), **Placement**
 Implementation details:
 - **Schema**: `VARIANTS` in `shopify_product_creator.py` is a list comprehension over `(gender, placement, size)`. Shopify options: `[Gender, Placement, Size]`.
 - **Qstomizer**: our automation clicks the stage thumbnail (`#stagemini0` = front, `#stagemini1` = back) before uploading so the design lands on the correct canvas. `customize_and_add_to_cart(placement=...)` drives this.
-- **Mango approval**: `execute_approval` uploads 4 mockups per product (male/female × front/back) and links each to its variant subset via `variant_ids` on the Shopify image object.
+- **Mango approval**: `execute_approval` generates 6 marketing scenes (4 female + 2 male model back views) via gpt-image-1 from the design PNG, uploads them first with gender-linked `variant_ids` (female closeup is primary product image), then uploads the 4 Qstomizer mockups (male/female × front/back) also gender/placement-linked. The female closeup becomes the product-card primary image; picking a variant on the product page swaps the gallery to the matching gender+placement shot.
 - **Webhook parser**: `app/main.py` handles both `"Male / Front / L"` (new) and `"Male / L"` (legacy) variant titles for backward compat.
 - **Migration**: `scripts/add_back_variants.py` was run once against all 18 standard tees on 2026-04-12 to add the Placement option and back mockups. Legacy color-based Astous male/female-limited tees were excluded (they use a different schema).
 
@@ -186,6 +186,19 @@ TShirtJunkies uses **Qstomizer** for custom design uploads. The service automate
 13. Build shareable cart permalink with checkout pre-fill params
 
 Available colors: Black, Navy Blue, Red, Royal Blue, Sport Grey, White (default: White)
+
+### Per-Product Tee Color
+
+`ProductMapping` has a `color` field (default `"White"`) that's persisted in `product_mappings.json` and used by the webhook order flow to select the matching Qstomizer fabric at print time. Mango's design schema includes a `tee_color` enum (one of the 6 available colors) — the LLM picks based on legibility rules (light artwork → Black, dark artwork → White, slogan style → whatever makes it pop). The value flows through `concept.tee_color` → `execute_approval` → `create_mappings_for_product(color=...)` → persisted on the mapping. Unknown values silently coerce to `White` with a warning via `_normalize_tee_color`. Scripts like `mail_tj_mockups.py` declare color per design in the `DESIGNS` tuple.
+
+### Upper-Back Placement (Konva reposition)
+
+Qstomizer is **Konva.js-based** (not fabric.js). After `.imagesubcontainer` click, the uploaded design auto-centers in the print area — which lands the print **mid-back**. Our marketing mockups show it at the upper back, so `customize_and_add_to_cart` / `fetch_mockup_from_qstomizer` / `_precache_mockups` default `vertical_offset=-0.25` (fraction of print-area height, negative = up toward collar). The reposition:
+1. Scans `Konva.stages` for the active stage whose layer has `Group` nodes named `grupoimage*` (3 copies: preview + actual + ghost).
+2. Finds the print area (dashed `Rect` on that layer) — its height varies 236–300 px per tee view, so always measure with `rect.height()`.
+3. Uses `group.getClientRect({relativeTo: stage})` for **actual rendered bounds** (attr `width`/`height` misleads on tall multi-line designs).
+4. **Clamps** the upward delta so the design's rendered top stays inside the print area with a 4 px safety pad — tall 4-line designs like "NORMAL PEOPLE SCARE ME" (design_h ≈ 166) would otherwise clip into the collar.
+5. Fires `dragend` on each group so Qstomizer's internal save hook captures the new position (TJ prints from the stored position, not the rendered preview — without dragend, the mockup looks right but the actual print reverts to centered).
 
 ### Color Selection Details
 
@@ -279,9 +292,15 @@ product_mappings.json    — Saved variant ID mappings
 data/
   proposals.json         — Agent proposal storage (persisted via Docker volume)
   ranking_history.json   — Ranking advisor report history
+scripts/
+  dont_tempt_me_gptimage.py  — Single-tee marketing photo script (DTM style), gpt-image-1 + Pillow transparent design
+  tee_scenes_from_refs.py    — Generalised marketing photo script, takes any reference tee and produces 4 scenes + transparents
+  redesign_omg_tees.py       — gpt-image-1 redesign of existing OMG slogan tees; supports per-scene CLI filter to re-roll a single scene
+  dont_tempt_me_compose.py   — Compose pipeline for white tees: blank tees + Claude-bbox + Pillow paste (guaranteed-correct text)
+  told_her_compose.py        — Compose pipeline for black tees with white serif caps (inverted bbox detection, no italic shear)
 static/
   front_design.png       — Design image uploaded to Qstomizer
-  proposals/             — Generated design images + cached mockups
+  proposals/             — Generated design images + cached mockups, plus per-slug marketing photo folders (dont_tempt_me_v3, i_dont_get_drunk, etc.)
   checkout_result.png    — Latest Playwright screenshot (auto-generated)
 tests/                   — Unit tests (pytest) — 130 tests, all mocked, no external services
 .env.example             — Template for environment variables
@@ -334,6 +353,8 @@ Detailed documentation for every subsystem is in `doc/`:
 | [agent2-design-creator.md](doc/agent2-design-creator.md) | Design Creator agent (5 types, mockup pre-caching) |
 | [agent3-ranking-advisor.md](doc/agent3-ranking-advisor.md) | Ranking Advisor agent (market rotation, GSC + Keyword Planner) |
 | [agent4-translation-checker.md](doc/agent4-translation-checker.md) | Translation Checker agent (EN→GR via Claude) |
+| [marketing-photo-generation.md](doc/marketing-photo-generation.md) | Standalone gpt-image-1 scripts for slogan tee marketing photos + Qstomizer transparent PNG |
+| [design-replication-workflow.md](doc/design-replication-workflow.md) | 5-step end-to-end: confirm inputs → pick pipeline → render scenes → wire into mail_tj_mockups → send email |
 
 ## Testing
 
@@ -538,9 +559,170 @@ Hermes sends an email with an English/Greek side-by-side HTML table showing all 
 The image client (`app/agents/image_client.py`) includes text validation for generated designs:
 
 - `generate_text_design` now uses transparent RGBA background instead of white
+- `generate_text_design` follows the Kyriaki-approved "Don't Tempt Me" template: **modest print scale** (~55% of canvas width, not 80%+) and a **two-line hierarchy** when the slogan contains a `\n` — bold condensed top (Impact / Liberation-Sans-Bold / Times-Bold) + regular-weight sub at 45% size (Arial / Liberation-Sans-Regular). `TEXT_DESIGN_HIERARCHY_FONTS` holds the (top, sub) font pairs. Mango's schema tells the LLM to embed `\n` at the natural punchline break (e.g. `"DON'T TEMPT ME\nI'LL SAY YES"`). Single-line slogans render at the same modest scale without hierarchy.
 - `validate_design_text(image_path, expected_text)` -- Claude vision reads text in generated images and checks correctness
 - `generate_design_with_text_check(concept, expected_text, ...)` -- generates via DALL-E, validates text with Claude, regenerates with correction prompt if wrong (up to 2 retries)
 - Pillow text designs (slogan type) skip `rembg` since they are already transparent PNG
+
+Note: `image_client.generate_design` was switched from `dall-e-3` to `gpt-image-1` on 2026-04-19. GPT-Image-1 is GPT-4o's native image model (the one ChatGPT uses since March 2025), returns base64 directly via `resp.data[0].b64_json` (no URL download), and produces much cleaner text rendering on fabric. Quality levels are `low`/`medium`/`high`; sizes `1024x1024` / `1536x1024` / `1024x1536`.
+
+## Marketing Photo Generation (CLI Scripts)
+
+Standalone scripts for hand-curated slogan tee launches. Separate from the Mango agent pipeline — these are one-shot CLI utilities that produce e-commerce photos plus a transparent PNG for Qstomizer/TJ upload.
+
+- **`scripts/dont_tempt_me_gptimage.py`** — hard-coded to the "DON'T TEMPT ME / I'LL SAY YES" design. Renders a transparent PNG via Pillow (upright, bold condensed, maroon `#8B1A1A`), then uses it as the reference image for `gpt-image-1 images.edit` to generate 4 matched scenes. Output: `static/proposals/dont_tempt_me_v3/`.
+- **`scripts/tee_scenes_from_refs.py`** — generalised `gpt-image-1` version. Each reference tee in the `REFERENCES` dict produces its own transparent + 4 scenes. Output: `static/proposals/<slug>/`.
+- **`scripts/redesign_omg_tees.py`** — `gpt-image-1` variant for redesigning existing OMG slogan tees in place. Supports per-tee `tee_color` (white/black) and per-scene filter on the CLI: `python -m scripts.redesign_omg_tees <slug> [scene_label]` re-rolls only the named scene, leaving approved scenes untouched.
+- **`scripts/dont_tempt_me_compose.py`** — **fallback/compose pipeline** for white tees. DALL-E 3 generates BLANK white tees, Claude vision finds the torso bbox, Pillow pastes the slogan at an explicit `width_pct`/`height_pct` of the bbox. Guarantees exact print size but produces a flatter "sticker" look.
+- **`scripts/told_her_compose.py`** — compose pipeline adapted for **black tees** with white serif text. Same three-stage approach (DALL-E blank black tee → Claude bbox with inverted black-fabric detection → Pillow paste at a configured `PRINT_GEOMETRY`). Used when gpt-image-1's size floor is too large.
+
+### Pipeline A — gpt-image-1 (default, natural-looking)
+
+1. **Pillow renders the slogan** onto an RGBA canvas. Saved twice: padded (reference) and tight-cropped (Qstomizer upload).
+2. **`gpt-image-1 images.edit`** is called with the padded PNG as the reference. Prompt describes the scene plus an `ARTWORK_SPEC` asking the model to copy the reference artwork verbatim.
+3. Up to 16 parallel calls when running 4 refs × 4 scenes. Wall time ~45-60s.
+
+### Pipeline B — compose (fallback when Pipeline A's size is wrong)
+
+1. **DALL-E 3** generates a completely blank tee scene (no print).
+2. **Claude vision** returns a torso bbox for the white (or black) shirt fabric; a second pass snaps the bbox top to the first row of "near-pure-fabric" pixels so collars and hair don't inflate the print area.
+3. **Pillow renders the slogan** sized to an explicit sub-rectangle of that bbox (`PRINT_GEOMETRY` per scene: `top_offset_pct`, `height_pct`, `width_pct`) and `alpha_composite`-s it onto the scene.
+
+### "All live products" scope for batch regeneration
+
+When the ask is "regenerate marketing photos for all my live/mapped products", the in-scope set is the **intersection of**:
+
+1. **Active OMG products** — `GET https://{domain}/admin/api/2024-01/products.json?status=active&limit=250`
+2. **Server-side mappings** — `~/omg-shopify/product_mappings.json` on the Azure VM (40.81.137.240). Local `product_mappings.json` is usually stale; always `scp` from server.
+3. **Design PNG availability** — `static/design_<slug>.png` either locally OR on server at `/home/vangelisl/omg-shopify/static/design_<slug>.png`.
+
+**5 astous tees default-excluded** — they use real product photography rather than the compose pipeline:
+- `astous-na-laloun-cyprus-female-tee` / `-male-tee` / `-female-limited-tee` / `-male-limited-tee` / `-unisex-tee`
+
+(Exception 2026-04-25 WIP: `astous-na-laloun-cyprus-unisex-tee` is being added — Vangelis provided a clean transparent design at `static/astous.png.png`. The other 4 astous variants stay excluded.)
+
+For any in-scope slug whose design PNG is missing locally, `scp` from server before running `compose_marketing_scenes`.
+
+### Updating live OMG products with new scene images
+
+Use `app/shopify_product_creator.py:upload_product_image(product_id, image_path, alt, variant_ids)`.
+
+#### Standard gallery sequence (products with Front/Back placement)
+
+```
+1. mockup_cache_..._male_back.png    → male back variants (8)
+2. mockup_cache_..._female_back.png  → female back variants (4)
+3. mockup_cache_..._male_front.png   → male front variants (8)
+4. mockup_cache_..._female_front.png → female front variants (4)
+5. 01_closeup_back.png               → ALL female variants (8 = back+front)
+6. 02_fullbody_back.png              → ALL female variants (8)
+7. 03_product_back.png               → unlinked (gender-neutral)
+8. 04_hanger_back.png                → unlinked
+9. 01_closeup_back_male.png          → ALL male variants (16)
+10. 02_fullbody_back_male.png        → ALL male variants (16)
+```
+
+For products without Placement (e.g. `you-are-beautiful-amazing-and-enough-tee`): only 2 TJ mockups (male/female back), and TJ male → all male variants, TJ female → all female variants.
+
+#### When refreshing scenes on a live product
+
+1. Fetch current images via `GET /admin/api/2024-01/products.json?status=active`
+2. Delete old scene images — filename starts with `01_`/`02_`/`03_`/`04_` AND does NOT contain `mockup_cache`
+3. Keep `mockup_cache_*` images untouched (those are TJ Qstomizer mockups linked to placement variants)
+4. Upload new scenes from `static/proposals/<slug>/` with the variant linking above
+
+#### Variant linking gotchas
+
+- **Substring bug**: `'male_back'` IS a substring of `'female_back'`. When matching TJ mockup filenames, **check female FIRST** OR use `'_female_back'` / `'_male_back'` patterns with leading underscores.
+- **Shopify variant_ids drop**: Shopify's POST/PUT image endpoints intermittently drop the `variant_ids` field server-side, even when the response shows correct count. Always re-query the product after upload to verify. The `upload_product_image` helper does a PUT retry on POST drops.
+- **Reorder + relink in one call**: When updating both position and variant_ids, send both in the same PUT — `{"image": {"id": ..., "position": N, "variant_ids": [...]}}` — and verify the response's variant count matches what you requested.
+
+#### TJ mockup cache (don't re-run Playwright unnecessarily)
+
+TJ Qstomizer mockups are cached locally at `static/proposals/mockup_cache_design_transparent_tj_<slug>_<gender>_<placement>.png`. If you accidentally delete a TJ mockup from Shopify, **restore from cache** via `upload_product_image(pid, cached_path, ..., variant_ids=...)` rather than re-running Playwright (~3 min per mockup).
+
+Regenerate via Qstomizer ONLY when: design PNG has changed OR tee color has changed.
+
+#### Vocabulary: "long body back"
+
+When Vangelis says **"long body back"** for a female image, he means the **lifestyle fullbody scene** `02_fullbody_back.png` (model walking away showing print on the upper back) — **NOT** the TJ mockup. Don't delete TJ mockups unless he explicitly says "TJ mockup" or "Qstomizer mockup".
+
+### Pipeline B in `app/agents/marketing_pipeline.py` (Mango approval scenes)
+
+The agent path (`compose_marketing_scenes`) uses gpt-image-1 for blank scenes. **All geometry is scene-type or design-type based, NOT per-tee** — tuning the rules updates every product uniformly.
+
+#### PRINT_GEOMETRY knobs
+
+- `top_offset_pct` — fraction of bbox height. Negatives allowed (pulls print above snapped fabric top — useful when `_snap_to_fabric_top` overshoots past hair).
+- `width_pct` — fraction of bbox width. Bbox-relative; fragile across re-rolls. Last-resort fallback.
+- `image_width_pct` — fraction of 1024 (image width). **Used for TEXT designs** (aspect < 0.4). Stable absolute pixel size.
+- `image_max_dim_pct` — fraction of 1024, sizes so `max(pw, ph) == this * 1024`. **Used for IMAGE designs** (aspect >= 0.4). Square illustrations sized by `image_width_pct` would have huge `ph`.
+- `x_offset_pct` — fraction of bbox width, positive = right. Per-scene fine-tune; brittle.
+
+#### Auto-detection: text vs image design
+
+Inside `compose_marketing_scenes.finish` callback: `is_image_design = design_aspect >= 0.4`. Text designs use `image_width_pct`; image designs use `image_max_dim_pct`, plus `top_offset_pct - 0.05` (sits visually higher), plus heavier spine-weighted blend, plus -20px left bias.
+
+#### Horizontal anchor: blended image-center + spine_x
+
+`_detect_shirt_bbox` returns both bbox AND `spine_x` (Claude-detected back centerline). Final anchor is a weighted blend:
+- **TEXT designs**: `0.70 * 512 + 0.30 * spine_x` (prefer image-center, text drift less obvious)
+- **IMAGE designs**: `0.30 * 512 + 0.70 * spine_x` (trust spine more for visually-heavy illustrations)
+- **IMAGE + closeup only**: additional `-20px` bias — gpt-image-1's closeup composition has a slight rightward model bias on closeups specifically. NOT applied to fullbody/product/hanger (the print is small relative to shirt area there and 20px would overshoot visibly).
+
+#### Fullbody robustness fixes
+
+Fullbody scenes had recurring bugs (overflow shirt, drop to waist, off-center). Three layered fixes:
+1. **`_snap_to_fabric_top` capped at 80px max push-down** — prevents the snap from sliding y1 past long hair to the lower back.
+2. **Print width capped at `bbox_w * 0.85`** in `_compute_print_rect` — image_width_pct on a 200px-wide fullbody shirt would otherwise overflow.
+3. **Force image-center horizontal anchor for all scenes** — overrides `_compute_print_rect`'s bbox-midpoint default; image-center (512) is the most consistent anchor across products and re-rolls.
+
+#### Tuning workflow
+
+```python
+await compose_marketing_scenes(
+    design_path=..., out_dir=..., tee_color="White",
+    scene_filter={"02_fullbody_back"},  # re-roll only this scene
+)
+```
+
+#### Re-roll variance gotcha
+
+Every gpt-image-1 re-roll produces a different bbox → same `PRINT_GEOMETRY` values give different visual results. If a tweak appears to make things worse, suspect the new bbox before re-tuning.
+
+### Known Limitations
+
+- **`gpt-image-1` has a hard floor on print size.** Dropping reference-PNG `size_ratio` 0.22 → 0.14 → 0.09 → 0.06 → 0.04 and rewriting the prompt with "30-40% back width" / "small caption" barely changed the rendered print size. The model has a fixed "slogan tee print should be this big" prior and ignores size instructions. If a review calls the print "too big" and gpt-image-1 can't go smaller, switch the affected scene to the compose pipeline.
+- **`gpt-image-1` reflows multi-word lines.** It will break long horizontal lines into shorter stacks (e.g. `"TOLD HER SHE'S THE ONE."` becomes 2-3 lines) regardless of the reference PNG layout or explicit "single-line" prompt instructions.
+- **`gpt-image-1` sometimes truncates words** (e.g. drops "ME" from "DON'T TEMPT ME"). Mitigation: shrink the reference to ~55% canvas width for generous margin and add a "do NOT crop word X" line to `ARTWORK_SPEC`. Re-rolling usually lands a clean one.
+- **DALL-E framing varies per call in the compose pipeline.** Each re-roll can give a closer or more distant shot, which shifts the torso bbox size and therefore the print absolute-size. If the print looks wrong, re-rolling the scene (not just adjusting `PRINT_GEOMETRY`) is often the fix. Tightening framing in the scene prompt (e.g. "subject fills 80% of vertical frame") helps.
+- **OpenAI moderation blocks profanity-adjacent slogans** (`σέξι μαδαφάκα` returns `safety_violations=[abuse]`).
+
+### Typography Rules (Kyriaki's style review, 2026-04-20/22)
+
+Applied as defaults for all slogan tees:
+
+- **Modest print scale** — target 30-50% of shirt back width, not 80%+. Oversized fills look wrong.
+- **Two-line hierarchy needs visible size AND weight difference.** Same font at different sizes reads chunky; pair a bold condensed top (Impact) with a regular-weight sans sub (Arial Regular). Sub-to-top size ratio ≤ 0.50.
+- **Keep the Mango-proposed slogan wording verbatim** in the rendered print — don't substitute a different variant of the phrase.
+- **Hybrid pipeline for review-driven tuning.** When gpt-image-1 renders the closeup/product/hanger shots at an acceptable size but the fullbody looks disproportionately large, swap just the fullbody through the compose pipeline. Copy the single scene into the canonical folder; accept minor style drift between sticker-paste and DTG-render scenes.
+- **Using an approved scene as `images.edit` reference can preserve size proportions.** Passing e.g. `01_closeup_back.png` (approved) to `gpt-image-1` when regenerating `02_fullbody_back.png` anchors the print size more reliably than passing the transparent design PNG alone. Works better than any prompt-only tweak.
+
+See `doc/marketing-photo-generation.md` for font candidates, reference table, full CLI reference, and the `PRINT_GEOMETRY` schema used by the compose scripts.
+
+### Design Replication Workflow (end-to-end)
+
+When Vangelis asks to "replicate" / "launch" a new slogan tee, run these 5 steps in one pass — don't ping-pong between them:
+
+1. **Confirm inputs:** slug (kebab), exact slogan wording (with `\n` for two-line hierarchy), tee color (one of the 6 Qstomizer colors). These are the only things you can't infer.
+2. **Pick pipeline:** gpt-image-1 by default (`tee_scenes_from_refs.py` / `redesign_omg_tees.py`); compose fallback (`dont_tempt_me_compose.py` / `told_her_compose.py`) when size floor / line reflow bites.
+3. **Render scenes:** add entry to the script's config dict (`REFERENCES` / `TEES`), run it. Output lands in `static/proposals/<slug>/` with 4 scenes + two transparent PNGs (padded + tight-cropped).
+4. **Register in `scripts/mail_tj_mockups.py`:** append `(title, slug, [4 scene names], qstomizer_color)` tuple to the `DESIGNS` list. Color MUST match the tee color (white-text on White Qstomizer = blank mockup).
+5. **Send:** `.venv/Scripts/python -m scripts.mail_tj_mockups send --force`. Produces 12 TJ mockups at `vertical_offset=-0.25` (upper back, clamped for tall designs), emails 24 inlined images to livadient@gmail.com + kmarangos@hotmail.com + kyriaki_mara@yahoo.com. ~12 min end-to-end. Short-circuits (~8s) on cached mockups unless `--force`.
+
+Expected feedback loops from Kyriaki: "too big" → switch scene to compose / use approved scene as `images.edit` reference; "too high" → tune `vertical_offset`; "missing word" → shrink `text_width_ratio` + `do NOT crop X` in `ARTWORK_SPEC`. Sweet-spot `width_pct` 0.38-0.48.
+
+Full workflow with expected failures + fixes: `doc/design-replication-workflow.md`.
 
 ## Google API Integrations (Atlas Data Sources)
 

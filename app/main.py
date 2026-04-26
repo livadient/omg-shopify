@@ -465,12 +465,14 @@ async def handle_order_created(
     product_id_map: dict[int, int] = {}  # source_variant_id -> target_product_id
     handle_map: dict[int, str] = {}  # source_variant_id -> source_handle
     design_map: dict[int, str] = {}  # source_variant_id -> design image filename
+    color_map: dict[int, str] = {}  # source_variant_id -> Qstomizer tee color
     for mapping in config.mappings:
         for v in mapping.variants:
             variant_map[v.source_variant_id] = v.target_variant_id
             product_id_map[v.source_variant_id] = mapping.target_product_id
             handle_map[v.source_variant_id] = mapping.source_handle
             design_map[v.source_variant_id] = getattr(mapping, "design_image", "front_design.png")
+            color_map[v.source_variant_id] = getattr(mapping, "color", "White")
 
     items_mapped = []
     items_skipped = []
@@ -496,6 +498,7 @@ async def handle_order_created(
                 "qstomizer_url": qstomizer_url,
                 "design_image": design_map.get(source_variant_id, "front_design.png"),
                 "front_design_url": f"/static/{design_map.get(source_variant_id, 'front_design.png')}",
+                "color": color_map.get(source_variant_id, "White"),
             })
         else:
             items_skipped.append({
@@ -581,7 +584,7 @@ async def _process_order_background(
             result = await customize_and_add_to_cart(
                 product_type=product_type,
                 size=size,
-                color="White",
+                color=item.get("color", "White"),
                 image_path=str(design_file),
                 quantity=item["quantity"],
                 headless=True,
@@ -1096,6 +1099,132 @@ async def blog_reject_confirm(proposal_id: str = Form(...), token: str = Form(..
     <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
         <h1 style="color:#dc2626;">Blog Post Rejected</h1>
         <p>A new one will be generated on the next scheduled run.</p>
+    </body></html>
+    """)
+
+
+@app.get("/agents/blog_link_fix/preview/{proposal_id}", response_class=HTMLResponse)
+async def blog_link_fix_preview(proposal_id: str):
+    """Side-by-side diff of the article body before and after link rewrites."""
+    from html import escape as _esc
+    from app.agents.approval import get_proposal
+    proposal = get_proposal(proposal_id)
+    if not proposal:
+        return HTMLResponse("<h1>Proposal not found</h1>", status_code=404)
+    data = proposal["data"]
+
+    swap_rows = ""
+    for s in data.get("swaps", []):
+        mismatch = ' <span style="color:#dc2626;font-size:11px;">[anchor mismatch]</span>' if s.get("anchor_mismatch") else ""
+        swap_rows += f"""
+        <tr>
+            <td style="padding:6px;color:#dc2626;text-decoration:line-through;font-family:monospace;font-size:13px;">{_esc(s['old_handle'])}</td>
+            <td style="padding:6px;">→</td>
+            <td style="padding:6px;color:#059669;font-family:monospace;font-size:13px;">{_esc(s['new_handle'])}</td>
+            <td style="padding:6px;font-size:12px;">{_esc(s['confidence']).upper()}{mismatch}</td>
+            <td style="padding:6px;font-size:12px;color:#6b7280;">"{_esc(s['anchor'])}" — {_esc(s.get('reason', ''))}</td>
+        </tr>"""
+
+    manual_rows = ""
+    for mu in data.get("manual", []):
+        manual_rows += f"""
+        <tr>
+            <td style="padding:6px;color:#dc2626;font-family:monospace;font-size:13px;" colspan="2">{_esc(mu['old_handle'])}</td>
+            <td style="padding:6px;font-size:12px;color:#6b7280;" colspan="3">"{_esc(mu['anchor'])}" — needs manual pick ({_esc(mu.get('reason', ''))})</td>
+        </tr>"""
+
+    old_body = data.get("old_body_html", "")
+    new_body = data.get("new_body_html", "")
+    return HTMLResponse(f"""
+    <html><head><title>Link diff: {_esc(data.get('article_title', ''))}</title>
+    <style>
+        body{{font-family:sans-serif;max-width:1100px;margin:20px auto;padding:20px;}}
+        .col{{width:48%;display:inline-block;vertical-align:top;border:1px solid #e5e7eb;border-radius:6px;padding:12px;background:#fafafa;}}
+        .col h3{{margin-top:0;}}
+        .col-old{{margin-right:1%;}}
+        .col-new{{margin-left:1%;}}
+        table{{width:100%;border-collapse:collapse;margin-bottom:16px;}}
+        th{{background:#f3f4f6;padding:6px;text-align:left;font-size:12px;}}
+    </style></head>
+    <body>
+        <p style="color:#6b7280;font-size:13px;">Status: {proposal['status']} | Created: {proposal['created_at']}</p>
+        <h1>{_esc(data.get('article_title', 'Untitled'))}</h1>
+        <p style="color:#6b7280;">/blogs/news/{_esc(data.get('article_handle', ''))}</p>
+        <h2>Proposed swaps</h2>
+        <table>
+            <thead><tr><th>Old</th><th></th><th>New</th><th>Confidence</th><th>Notes</th></tr></thead>
+            <tbody>{swap_rows}{manual_rows}</tbody>
+        </table>
+        <h2>Body diff</h2>
+        <div class="col col-old"><h3 style="color:#dc2626;">Before</h3>{old_body}</div><div class="col col-new"><h3 style="color:#059669;">After</h3>{new_body}</div>
+    </body></html>
+    """)
+
+
+@app.get("/agents/blog_link_fix/approve/{proposal_id}", response_class=HTMLResponse)
+async def blog_link_fix_approve(proposal_id: str, token: str = ""):
+    from app.agents.approval import validate_token
+    proposal = validate_token(proposal_id, token)
+    if not proposal:
+        return HTMLResponse(
+            "<h1>Invalid or expired link</h1><p>This proposal may have already been processed.</p>",
+            status_code=403,
+        )
+    return HTMLResponse(_approve_confirm_page(
+        proposal_id, token, "/agents/blog_link_fix/approve", "link fix",
+        title=proposal["data"].get("article_title", ""),
+    ))
+
+
+@app.post("/agents/blog_link_fix/approve", response_class=HTMLResponse)
+async def blog_link_fix_approve_confirm(proposal_id: str = Form(...), token: str = Form(...)):
+    from app.agents.approval import claim_proposal, update_status
+    proposal = claim_proposal(proposal_id, token)
+    if not proposal:
+        return HTMLResponse(
+            "<h1>Invalid or expired link</h1><p>This proposal may have already been processed.</p>",
+            status_code=403,
+        )
+    from app.agents.blog_link_qa import execute_blog_link_fix
+    try:
+        article = await execute_blog_link_fix(proposal_id)
+        article_handle = article.get("handle", "")
+        article_url = f"https://omg.com.cy/blogs/news/{article_handle}" if article_handle else "https://omg.com.cy/blogs"
+        return HTMLResponse(f"""
+        <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
+            <h1 style="color:#059669;">Links Fixed!</h1>
+            <p><strong>{proposal['data'].get('article_title', '')}</strong></p>
+            <p>{len(proposal['data'].get('swaps', []))} link(s) updated.</p>
+            <a href="{article_url}" style="color:#2563eb;">View on store</a>
+        </body></html>
+        """)
+    except Exception as e:
+        update_status(proposal_id, "pending")
+        return HTMLResponse(f"<h1>Error applying fix</h1><p>{e}</p>", status_code=500)
+
+
+@app.get("/agents/blog_link_fix/reject/{proposal_id}", response_class=HTMLResponse)
+async def blog_link_fix_reject(proposal_id: str, token: str = ""):
+    from app.agents.approval import validate_token
+    proposal = validate_token(proposal_id, token)
+    if not proposal:
+        return HTMLResponse("<h1>Invalid or expired link</h1>", status_code=403)
+    return HTMLResponse(_reject_confirm_page(
+        proposal_id, token, "/agents/blog_link_fix/reject", "link fix"
+    ))
+
+
+@app.post("/agents/blog_link_fix/reject", response_class=HTMLResponse)
+async def blog_link_fix_reject_confirm(proposal_id: str = Form(...), token: str = Form(...)):
+    from app.agents.approval import validate_token, update_status
+    proposal = validate_token(proposal_id, token)
+    if not proposal:
+        return HTMLResponse("<h1>Invalid or expired link</h1>", status_code=403)
+    update_status(proposal_id, "rejected")
+    return HTMLResponse("""
+    <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
+        <h1 style="color:#dc2626;">Link Fix Rejected</h1>
+        <p>The article was left unchanged.</p>
     </body></html>
     """)
 

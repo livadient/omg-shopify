@@ -1,4 +1,5 @@
 """Agent 2: Trend Research & Design Creator — researches trends, generates designs, creates products."""
+import asyncio
 import json
 import logging
 import shutil
@@ -18,6 +19,220 @@ PAST_DESIGNS_FILE = DATA_DIR / "past_designs.json"
 # Extra recipients for Mango's NEW DESIGNS PROPOSAL email only (not for the
 # admin-only approval success/failure notifications).
 PROPOSAL_EXTRA_RECIPIENTS = ["kmarangos@hotmail.com", "kyriaki_mara@yahoo.com"]
+
+# Qstomizer's supported tee colors. Anything else is silently coerced to
+# White so an LLM hallucination ("Olive Green") doesn't break the Playwright
+# color click in qstomizer_automation.select_color.
+QSTOMIZER_COLORS = {"White", "Black", "Navy Blue", "Red", "Royal Blue", "Sport Grey"}
+
+
+def _normalize_tee_color(value: object) -> str:
+    """Coerce a raw LLM value to a supported Qstomizer color, default White."""
+    if not isinstance(value, str):
+        return "White"
+    candidate = value.strip()
+    if not candidate:
+        return "White"
+    for allowed in QSTOMIZER_COLORS:
+        if candidate.lower() == allowed.lower():
+            return allowed
+    logger.warning(f"Unknown tee_color {candidate!r} — falling back to White")
+    return "White"
+
+
+# Marketing-scene pipeline (shared with scripts/refresh_all_product_images.py).
+# We generate 6 scenes per product via gpt-image-1: 4 female + 2 male model
+# back views, sized for upper-back print placement. Both scripts use the
+# same artwork spec so newly-approved Mango designs look consistent with
+# the backfilled catalog.
+
+
+def _build_marketing_artwork_spec(fabric: str, exact_text: str | None) -> str:
+    """Artwork spec for gpt-image-1. When the design has known text we pin
+    it verbatim; when it's a pure illustration we explicitly forbid any
+    text. Without this lock gpt-image-1 hallucinates captions (e.g. "DON'T
+    HURRY" on a silent walking-penguin illustration).
+    """
+    base = (
+        f"The t-shirt has a printed graphic centered on the upper back. The "
+        f"print must be the EXACT artwork shown in the reference image — copy "
+        f"it verbatim, pixel-faithful. The print should be SMALL and "
+        f"UNDERSTATED — roughly 20-30% of the shirt's upper back width, "
+        f"sized like a chest-pocket caption, with generous {fabric} fabric "
+        f"on all sides. Do NOT scale it up. This is deliberately modest — "
+        f"think minimalist boutique tee, NOT a statement slogan, NOT a "
+        f"billboard. Render as a natural DTG fabric print that follows the "
+        f"garment's shading and folds. Do NOT add quotation marks, brand "
+        f"name, signature, label, or watermark."
+    )
+    if exact_text:
+        oneline = " / ".join(exact_text.split("\n"))
+        return (
+            base
+            + f" CRITICAL: the ONLY text on the shirt is exactly: \"{oneline}\" "
+              f"(preserving original line breaks and capitalisation). Do NOT "
+              f"change, substitute, paraphrase, shorten, lengthen, or invent "
+              f"any other wording. Render these EXACT words and NO OTHER text. "
+              f"Every word must be fully visible — do NOT crop or truncate."
+        )
+    return (
+        base
+        + " CRITICAL: this design is a PURE ILLUSTRATION with NO TEXT. Do NOT "
+          "add ANY text, letters, numbers, words, slogans, captions, or "
+          "writing anywhere on the shirt or in the image. The ONLY thing on "
+          "the shirt is the graphic illustration from the reference."
+    )
+
+
+async def _extract_design_text_via_claude(design_path: Path) -> str | None:
+    """Read the exact text on the design PNG via Claude vision; returns
+    None for pure-illustration designs (no text at all).
+    """
+    import base64 as _b64
+    import anthropic
+    if not settings.anthropic_api_key:
+        return None
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    img_b64 = _b64.b64encode(design_path.read_bytes()).decode("utf-8")
+    try:
+        resp = await client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=500,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": img_b64}},
+                    {"type": "text", "text": (
+                        "Read this t-shirt design PNG and return ONLY the visible text verbatim "
+                        "(preserving line breaks with \\n, capitalization, punctuation, spacing). "
+                        "If the design is a pure illustration with NO text at all, respond exactly: NONE.\n\n"
+                        "Return ONLY the text or NONE — no explanation, no quotes."
+                    )},
+                ],
+            }],
+        )
+        text = resp.content[0].text.strip()
+        if text.upper() == "NONE" or not text:
+            return None
+        return text
+    except Exception as e:
+        logger.warning(f"Claude text extraction failed for {design_path.name}: {e}")
+        return None
+
+
+def _build_marketing_scene_prompts(tee_color: str, exact_text: str | None) -> dict[str, str]:
+    fabric = tee_color.lower()
+    flat_bg = "pure white seamless" if fabric != "white" else "light grey seamless"
+    artwork = _build_marketing_artwork_spec(fabric, exact_text)
+    return {
+        "01_closeup_back": (
+            f"Medium close-up lifestyle e-commerce photograph taken from directly "
+            f"behind a young woman. She is turned with her back fully to the "
+            f"camera — her face is not visible. Her hair is pulled up into a high "
+            f"bun so the upper back of her t-shirt is completely unobstructed. "
+            f"The frame shows her from just above the bun down to her hips. She "
+            f"wears a plain {fabric} crew-neck cotton t-shirt.\n\n{artwork}\n\n"
+            f"Soft natural daylight, clean minimalist light-grey studio "
+            f"background, professional fashion e-commerce product photography, "
+            f"photorealistic, sharp focus, 4k."
+        ),
+        "02_fullbody_back": (
+            f"Full-body lifestyle e-commerce photograph of a young woman walking "
+            f"away from the camera, back view. She is fully turned away, her face "
+            f"is not visible. She wears a plain {fabric} crew-neck cotton t-shirt "
+            f"tucked loosely into light blue straight-leg jeans and white sneakers. "
+            f"Full body from head to feet in frame, the shirt's back print is "
+            f"clearly legible.\n\n{artwork}\n\n"
+            f"Clean minimalist light-grey studio background, soft natural daylight, "
+            f"professional fashion e-commerce photography, photorealistic, 4k."
+        ),
+        "03_product_back": (
+            f"Overhead flat-lay product photograph of a plain {fabric} crew-neck "
+            f"cotton t-shirt laid flat on a {flat_bg} background, photographed "
+            f"straight down from above. The shirt is laid with the BACK facing "
+            f"up. Short sleeves spread out symmetrically. Evenly lit, soft "
+            f"shadows, no model, no hanger.\n\n{artwork}\n\n"
+            f"Professional e-commerce apparel flat-lay photography, "
+            f"photorealistic, 4k, sharp focus."
+        ),
+        "04_hanger_back": (
+            f"Product photograph of a plain {fabric} crew-neck cotton t-shirt on "
+            f"a plain wooden clothes hanger, hung against a clean minimalist "
+            f"light-grey wall. The shirt is facing the camera straight-on from "
+            f"the back so the back print is clearly visible. Natural fabric "
+            f"drape, short sleeves, even soft studio lighting.\n\n{artwork}\n\n"
+            f"Professional e-commerce apparel product photography, "
+            f"photorealistic, 4k, sharp focus."
+        ),
+        "01_closeup_back_male": (
+            f"Medium close-up lifestyle e-commerce photograph taken from directly "
+            f"behind a fit, semi-muscular young man. He is turned with his back "
+            f"fully to the camera — his face is not visible. His short dark hair "
+            f"is neatly cut so the upper back of his t-shirt is completely "
+            f"unobstructed. The frame shows him from just above the neck down to "
+            f"his hips. He wears a plain {fabric} crew-neck cotton t-shirt that "
+            f"fits well across defined shoulders and a toned back (athletic, "
+            f"gym-regular, not bodybuilder).\n\n{artwork}\n\n"
+            f"Soft natural daylight, clean minimalist light-grey studio "
+            f"background, professional fashion e-commerce product photography, "
+            f"photorealistic, sharp focus, 4k."
+        ),
+        "02_fullbody_back_male": (
+            f"Full-body lifestyle e-commerce photograph of a fit, semi-muscular "
+            f"young man walking away from the camera, back view. He is fully "
+            f"turned away, his face is not visible. He wears a plain {fabric} "
+            f"crew-neck cotton t-shirt that fits well across defined shoulders "
+            f"and a toned back (athletic, gym-regular, not bodybuilder), tucked "
+            f"loosely into dark straight-leg jeans and white sneakers. Full body "
+            f"from head to feet in frame, the shirt's back print is clearly "
+            f"legible.\n\n{artwork}\n\n"
+            f"Clean minimalist light-grey studio background, soft natural "
+            f"daylight, professional fashion e-commerce photography, "
+            f"photorealistic, 4k."
+        ),
+    }
+
+
+def _group_variant_ids_by_gender_placement(product: dict) -> dict[tuple[str, str], list[int]]:
+    groups: dict[tuple[str, str], list[int]] = {
+        ("male", "front"): [], ("male", "back"): [],
+        ("female", "front"): [], ("female", "back"): [],
+    }
+    for v in product.get("variants", []):
+        g = (v.get("option1") or "").lower()
+        p = (v.get("option2") or "").lower()
+        gkey = "female" if "female" in g else ("male" if "male" in g else None)
+        pkey = "back" if p == "back" else ("front" if p == "front" else None)
+        if gkey and pkey:
+            groups[(gkey, pkey)].append(v["id"])
+    return groups
+
+
+async def _generate_marketing_scenes(
+    handle: str,
+    design_path: Path,
+    tee_color: str,
+) -> dict[str, Path]:
+    """Compose the 6 marketing scenes by pasting the transparent design
+    PNG directly onto blank-tee model photos. Returns label → path dict.
+
+    Pipeline lives in app.agents.marketing_pipeline so the Phase 3 backfill
+    script and this approval flow share one recipe. We use the transparent
+    design (not a TJ-mockup silhouette) so the model's actual tee shows
+    through — pasting a tee silhouette over the model's tee creates a
+    visible "tee on tee" edge.
+    """
+    from app.agents.marketing_pipeline import compose_marketing_scenes
+
+    slug = handle.replace("-", "_")
+    scene_dir = STATIC_DIR / "proposals" / slug
+    scene_dir.mkdir(parents=True, exist_ok=True)
+
+    generated = await compose_marketing_scenes(
+        design_path=design_path, out_dir=scene_dir, tee_color=tee_color,
+    )
+    logger.info(f"Composed {len(generated)}/6 marketing scenes for {handle}")
+    return generated
 
 SYSTEM_PROMPT_BASE = """You are a creative director and trend researcher for OMG (omg.com.cy), an online t-shirt brand. Your target market is ages 16-45 globally.
 
@@ -59,6 +274,7 @@ OUTPUT_SCHEMA = """Output as JSON:
       "product_type": "male|female",
       "suggested_title": "Product title for the store",
       "suggested_tags": "comma,separated,tags (include 'summer' for summer-type, 'feminine' for feminine-type, 'cyprus,tourist,souvenir' for love-cyprus type)",
+      "tee_color": "White|Black|Navy Blue|Red|Royal Blue|Sport Grey",
       "reasoning": "Why this design would sell well right now"
     }
   ]
@@ -76,7 +292,24 @@ NAMING RULES (strict):
   Bad: "Quantum Cat Paradox Physics Humor Science Tee" (six adjectives stapled together).
 - `text_on_shirt`: keep it SHORT (1–6 words max if you want DALL-E to spell it right).
   Long phrases consistently come back misspelled — prefer slogan-type for anything 7+ words
-  so we render with Pillow instead.
+  so we render with Pillow instead. For SLOGAN-type designs, split the slogan across
+  two lines using a literal `\n` when there's a natural punchline break (top line = the
+  setup/statement, bottom line = the kicker/punchline). The Pillow renderer applies a
+  size+weight hierarchy: top line in bold condensed caps, bottom line noticeably smaller
+  and thinner in a regular-weight sans. This matches the approved "Don't Tempt Me /
+  I'll Say Yes" template — modest chest-pocket scale (~55% canvas width), not billboard.
+  Example good shapes: `"DON'T TEMPT ME\nI'LL SAY YES"`, `"TOLD HER SHE'S THE ONE\nNOT THE ONLY ONE"`.
+  Single-line slogans render at the same modest scale without hierarchy.
+- `tee_color`: the fabric color the design is PRINTED ON. Must be exactly one of
+  `White`, `Black`, `Navy Blue`, `Red`, `Royal Blue`, `Sport Grey` — any other value
+  is rejected. Pick for legibility:
+  * Light-toned artwork (white text, pastels, pale illustrations) → `Black` or a dark
+    fabric so the print actually shows.
+  * Dark-toned artwork (black text, dark ink, deep colors) → `White` (default).
+  * Mid-tones or full-color illustrations → default to `White` unless black
+    dramatically improves contrast. When in doubt, use `White`.
+  * Slogan-type designs where the slogan color is inherent to the style
+    (e.g. maroon italic caps) → use the fabric that makes the slogan pop.
 """
 
 
@@ -476,7 +709,11 @@ Be specific in the design description so an AI image generator can create it acc
 
             # Pre-cache TShirtJunkies mockups using nobg version (looks better on mockup)
             mockup_image = str(nobg_path) if nobg_path != image_path else str(image_path)
-            cached_mockups = await _precache_mockups(mockup_image, concept.get("name", ""))
+            tee_color = _normalize_tee_color(concept.get("tee_color"))
+            concept["tee_color"] = tee_color
+            cached_mockups = await _precache_mockups(
+                mockup_image, concept.get("name", ""), color=tee_color,
+            )
             concept["cached_mockups"] = cached_mockups
 
             proposal = create_proposal("design", concept)
@@ -505,7 +742,12 @@ Be specific in the design description so an AI image generator can create it acc
     return proposals
 
 
-async def _precache_mockups(design_image_path: str, concept_name: str) -> dict:
+async def _precache_mockups(
+    design_image_path: str,
+    concept_name: str,
+    color: str = "White",
+    vertical_offset: float = -0.25,
+) -> dict:
     """Pre-generate TShirtJunkies mockups via Qstomizer so approval is near-instant.
 
     Generates 4 mockups: male×front, male×back, female×front, female×back.
@@ -527,19 +769,20 @@ async def _precache_mockups(design_image_path: str, concept_name: str) -> dict:
     ]
     for ptype, size, placement in combos:
         try:
-            logger.info(f"Pre-caching {ptype} {placement} mockup for '{concept_name}'...")
+            logger.info(f"Pre-caching {ptype} {placement} {color} mockup for '{concept_name}'...")
             mockup_url = await fetch_mockup_from_qstomizer(
-                design_image_path, ptype, size, placement=placement,
+                design_image_path, ptype, size,
+                placement=placement, color=color, vertical_offset=vertical_offset,
             )
             if mockup_url:
                 filename = f"mockup_cache_{Path(design_image_path).stem}_{ptype}_{placement}.png"
                 local_path = proposals_dir / filename
                 await download_image(mockup_url, local_path)
                 cached[ptype][placement] = {"url": mockup_url, "path": str(local_path)}
-                logger.info(f"Cached {ptype} {placement} mockup: {local_path}")
+                logger.info(f"Cached {ptype} {placement} {color} mockup: {local_path}")
         except Exception as e:
             logger.warning(
-                f"Failed to pre-cache {ptype} {placement} mockup for '{concept_name}': {e}"
+                f"Failed to pre-cache {ptype} {placement} {color} mockup for '{concept_name}': {e}"
             )
 
     return cached
@@ -668,76 +911,97 @@ async def execute_approval(proposal_id: str, version: str = "original") -> dict:
     mappings = await create_mappings_for_product(
         omg_product=product,
         design_image=design_filename,
+        color=_normalize_tee_color(data.get("tee_color")),
     )
 
-    # Upload 4 mockups: male×front, male×back, female×front, female×back.
-    # The primary-gender's FRONT mockup goes first so it's the main product image.
-    # Each mockup gets linked to its (gender, placement) variant subset so the
-    # gallery swaps automatically when the customer picks e.g. Female / Back.
+    design_path_obj = STATIC_DIR / design_filename
+    tee_color = _normalize_tee_color(data.get("tee_color"))
+    title = data.get("suggested_title", data.get("name", "Graphic Tee"))
+
+    # 1) Resolve TJ mockup paths FIRST — they drive the on-model scenes
+    # below (we paste the rendered TJ tee onto blank-model photos for
+    # pixel-perfect consistency between the product-gallery TJ mockup and
+    # the lifestyle shots). Prefer Mango's pre-cache; fall back to live
+    # Playwright for anything missing.
     cached_mockups = data.get("cached_mockups", {}) if version == "nobg" else {}
-    design_path = str(STATIC_DIR / design_filename)
-    upload_order = _mockup_order(data.get("target_audience", ""))
-    logger.info(
-        f"Mockup upload order: {[label for _, _, _, label in upload_order]} "
-        f"(target_audience={data.get('target_audience', 'unisex')})"
-    )
-
-    # Group variant IDs by (gender, placement) so each mockup links to its subset.
-    # Products now have 3 options: option1=Gender, option2=Placement, option3=Size.
-    # Legacy products (2 options) would have no placement — skip them here since
-    # this code path only runs for newly-created 3-option products.
-    variant_ids_by_key: dict[tuple[str, str], list[int]] = {
-        ("male", "front"): [], ("male", "back"): [],
-        ("female", "front"): [], ("female", "back"): [],
-    }
-    for v in product.get("variants", []):
-        gender = (v.get("option1") or "").lower()
-        placement = (v.get("option2") or "").lower()
-        gkey = "female" if "female" in gender else ("male" if "male" in gender else None)
-        pkey = "back" if placement == "back" else ("front" if placement == "front" else None)
-        if gkey and pkey:
-            variant_ids_by_key[(gkey, pkey)].append(v["id"])
-
-    for ptype, size, placement, label in upload_order:
+    design_path = str(design_path_obj)
+    mockup_paths: dict[tuple[str, str], Path | None] = {}
+    for (ptype, size, placement) in [
+        ("male", "L", "front"), ("male", "L", "back"),
+        ("female", "M", "front"), ("female", "M", "back"),
+    ]:
         cached = cached_mockups.get(ptype, {}).get(placement, {}) if isinstance(cached_mockups.get(ptype), dict) else {}
         cached_path = Path(cached["path"]) if cached.get("path") else None
-
         if cached_path and cached_path.exists():
-            logger.info(f"Using pre-cached {label} mockup: {cached_path}")
-            mockup_path = cached_path
-        else:
-            logger.info(f"Fetching {label} mockup from TShirtJunkies (version={version})...")
-            mockup_url = await fetch_mockup_from_qstomizer(
-                design_path, ptype, size, placement=placement,
-            )
-            if not mockup_url:
-                continue
-            mockup_path = STATIC_DIR / "proposals" / f"mockup_{handle}_{ptype}_{placement}.png"
-            mockup_path.parent.mkdir(exist_ok=True)
-            await download_image(mockup_url, mockup_path)
+            mockup_paths[(ptype, placement)] = cached_path
+            continue
+        logger.info(f"Fetching {ptype}/{placement} mockup from TShirtJunkies...")
+        mockup_url = await fetch_mockup_from_qstomizer(
+            design_path, ptype, size, placement=placement,
+        )
+        if not mockup_url:
+            mockup_paths[(ptype, placement)] = None
+            continue
+        local = STATIC_DIR / "proposals" / f"mockup_{handle}_{ptype}_{placement}.png"
+        local.parent.mkdir(exist_ok=True)
+        await download_image(mockup_url, local)
+        mockup_paths[(ptype, placement)] = local
 
+    # 2) Compose the 6 marketing scenes by pasting the transparent design
+    # PNG onto blank-tee model photos. Pixel-perfect text (the design PNG
+    # is the source of truth) without the "tee on tee" edge artifact you
+    # get from pasting a TJ-mockup silhouette over the model's existing tee.
+    scenes: dict[str, Path] = {}
+    if design_path_obj.exists():
         try:
-            target_variants = variant_ids_by_key.get((ptype, placement)) or None
-            await upload_product_image(
-                product_id,
-                mockup_path,
-                alt=f"{label} T-Shirt Mockup",
-                variant_ids=target_variants,
-            )
-            logger.info(
-                f"Uploaded {label} mockup to product {product_id} "
-                f"(linked to {len(target_variants or [])} {ptype}/{placement} variants)"
+            scenes = await _generate_marketing_scenes(
+                handle=handle, design_path=design_path_obj, tee_color=tee_color,
             )
         except Exception as e:
-            logger.warning(f"Failed to upload {label} mockup: {e}")
+            logger.warning(f"Marketing scene generation failed: {e}")
 
-    # Upload the original design artwork as the last image
-    if image_path and image_path.exists():
+    # Build gender/placement variant groups for linking.
+    groups = _group_variant_ids_by_gender_placement(product)
+    all_female = groups[("female", "front")] + groups[("female", "back")]
+    all_male = groups[("male", "front")] + groups[("male", "back")]
+    all_back = groups[("male", "back")] + groups[("female", "back")]
+
+    # Unified upload plan (shared shape with scripts/refresh_all_product_images.py):
+    # 1) TJ male back mockup = card thumbnail
+    # 2) TJ female back mockup = card hover image
+    # 3) Male lifestyle (selecting Male swaps gallery to male model)
+    # 4) Female lifestyle
+    # 5) Flat-lay + hanger (unisex)
+    # 6) Remaining TJ mockups
+    # Gender-variant linking is preserved so the gallery swaps to the
+    # matching shot when Male / Female / Front / Back is selected.
+    # NOTE: the transparent Design Artwork is intentionally NOT uploaded — it
+    # was only useful as a local backup. Source of truth is static/design_*.png.
+    # Only the 4 TJ mockups carry variant_ids — Shopify enforces
+    # one-variant-per-image, so linking a variant to a lifestyle shot would
+    # silently block the TJ mockup from claiming that variant.
+    upload_plan: list[tuple[Path | None, list[int] | None, str]] = [
+        (mockup_paths.get(("male", "back")), groups[("male", "back")] or None, f"{title} — TJ male back mockup"),
+        (mockup_paths.get(("female", "back")), groups[("female", "back")] or None, f"{title} — TJ female back mockup"),
+        (scenes.get("01_closeup_back_male"), None, f"{title} — male closeup back"),
+        (scenes.get("02_fullbody_back_male"), None, f"{title} — male fullbody back"),
+        (scenes.get("01_closeup_back"), None, f"{title} — female closeup back"),
+        (scenes.get("02_fullbody_back"), None, f"{title} — female fullbody back"),
+        (scenes.get("03_product_back"), None, f"{title} — back flat-lay"),
+        (scenes.get("04_hanger_back"), None, f"{title} — back hanger"),
+        (mockup_paths.get(("male", "front")), groups[("male", "front")] or None, f"{title} — TJ male front mockup"),
+        (mockup_paths.get(("female", "front")), groups[("female", "front")] or None, f"{title} — TJ female front mockup"),
+    ]
+    uploaded = 0
+    for path, vids, alt in upload_plan:
+        if not (path and path.exists()):
+            continue
         try:
-            await upload_product_image(product_id, image_path, alt="Design Artwork")
-            logger.info(f"Uploaded design artwork as last image")
+            await upload_product_image(product_id, path, alt=alt, variant_ids=vids)
+            uploaded += 1
         except Exception as e:
-            logger.warning(f"Failed to upload design artwork: {e}")
+            logger.warning(f"Upload {alt} failed: {e}")
+    logger.info(f"Uploaded {uploaded} images to product {product_id}")
 
     update_status(proposal_id, "approved")
     logger.info(f"Design approved: product {product_id} created with {len(mappings)} mappings + mockups")

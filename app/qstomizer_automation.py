@@ -72,6 +72,7 @@ async def customize_and_add_to_cart(
     headless: bool = False,
     shipping: dict | None = None,
     placement: str = "front",
+    vertical_offset: float = -0.25,
 ) -> str:
     """Open Qstomizer, upload design, select color and size, add to cart,
     and optionally fill in checkout shipping details.
@@ -79,6 +80,15 @@ async def customize_and_add_to_cart(
     Args:
         placement: "front" (default) or "back" — switches Qstomizer's canvas
             view before uploading so the design is placed on the correct side.
+        vertical_offset: fraction of the Qstomizer print-area height to
+            nudge the placed design. Negative moves the print UP (toward
+            the collar), positive moves it DOWN. 0.0 keeps Qstomizer's
+            default dead-center placement. Our marketing mockups sit the
+            print around the upper back; -0.25 gets close to that. The
+            reposition targets Konva Group nodes named 'grupoimage*' and
+            fires 'dragend' so Qstomizer's save hook captures the new
+            position (TJ prints from the stored position, not just the
+            rendered preview).
 
     Runs Playwright in a separate thread with ProactorEventLoop on Windows
     to avoid uvicorn's SelectorEventLoop subprocess limitation.
@@ -96,6 +106,7 @@ async def customize_and_add_to_cart(
             headless=headless,
             shipping=shipping,
             placement=placement,
+            vertical_offset=vertical_offset,
         ),
     )
 
@@ -109,6 +120,7 @@ async def _customize_and_add_to_cart_impl(
     headless: bool = False,
     shipping: dict | None = None,
     placement: str = "front",
+    vertical_offset: float = -0.25,
 ) -> str:
     """Actual Playwright implementation."""
     image_path = Path(image_path).resolve()
@@ -262,6 +274,89 @@ async def _customize_and_add_to_cart_impl(
             print(f"  Warning: {click_result}")
         await page.wait_for_timeout(3000)
         print("  Image placed on canvas")
+
+        # --- Step 2b: Optionally reposition the placed image vertically ---
+        # Qstomizer is Konva.js-based (not fabric). It auto-centers the
+        # uploaded design in the print area (a dashed Rect on the active
+        # stage), which lands the print mid-back. Our marketing mockups show
+        # the print higher up (upper-back). `vertical_offset` is a fraction
+        # of the PRINT-AREA height — negative = up (toward collar), positive
+        # = down, 0 = leave Qstomizer's default alone.
+        if vertical_offset:
+            print(f"Nudging placed image by vertical_offset={vertical_offset} of print-area height...")
+            move_result = await qf.evaluate(f"""
+                () => {{
+                    const offset = {vertical_offset};
+                    if (typeof Konva === 'undefined') return 'no_konva';
+                    // The active stage is the one whose layer contains
+                    // Group nodes named grupoimage* — the other stages are
+                    // passive views (front/back/male/female mockup sides).
+                    let activeStage = null;
+                    for (const stage of (Konva.stages || [])) {{
+                        for (const layer of stage.getLayers()) {{
+                            const hasGroup = layer.getChildren().some(c =>
+                                c.getClassName() === 'Group' && /^grupoimage/.test(c.id())
+                            );
+                            if (hasGroup) {{ activeStage = stage; break; }}
+                        }}
+                        if (activeStage) break;
+                    }}
+                    if (!activeStage) return 'no_active_stage_with_grupoimage';
+                    const layer = activeStage.getLayers()[0];
+                    // Print area = dashed Rect (non-full-size)
+                    const rect = layer.getChildren().find(c =>
+                        c.getClassName() === 'Rect' && c.attrs.dash && c.width() < 790
+                    );
+                    if (!rect) return 'no_print_area_rect';
+                    const printTop = rect.y();
+                    const printCenterX = rect.x() + rect.width() / 2;
+                    const groups = layer.getChildren().filter(c =>
+                        c.getClassName() === 'Group' && /^grupoimage/.test(c.id())
+                    );
+                    if (groups.length === 0) return 'no_groups_to_move';
+                    // Use getClientRect() for the ACTUAL rendered bounds of
+                    // the design image (respecting intrinsic aspect ratio +
+                    // fit-to-print-area scaling). The Group node's attr
+                    // width/height is a bounding box hint and doesn't match
+                    // the rendered image for tall multi-line designs.
+                    const g = groups[0];
+                    const bounds = g.getClientRect({{relativeTo: activeStage}});
+                    const requestedDelta = rect.height() * offset;
+                    // Clamp: keep the rendered top inside the print area
+                    // with a small safety pad so tall designs don't clip
+                    // the collar/shoulder zone.
+                    const safetyPad = 4;
+                    const maxUpwardMove = -(bounds.y - printTop - safetyPad);
+                    const deltaY = offset < 0
+                        ? Math.max(requestedDelta, maxUpwardMove)
+                        : requestedDelta;
+                    // Horizontal centering — Qstomizer's auto-placement can
+                    // leave the design slightly off-center horizontally
+                    // (especially on the female tee where the print area
+                    // Rect doesn't perfectly match the visible tee body).
+                    // Compute the delta needed to center the rendered design
+                    // on the print-area centre and apply it alongside deltaY.
+                    const renderedCenterX = bounds.x + bounds.width / 2;
+                    const deltaX = printCenterX - renderedCenterX;
+                    groups.forEach(node => {{
+                        node.y(node.y() + deltaY);
+                        node.x(node.x() + deltaX);
+                        node.fire('dragend', {{target: node, evt: null}});
+                    }});
+                    layer.getChildren().forEach(node => {{
+                        if (node.getClassName() === 'Transformer' && typeof node.forceUpdate === 'function') {{
+                            try {{ node.forceUpdate(); }} catch (e) {{}}
+                        }}
+                    }});
+                    layer.batchDraw();
+                    const clamped = deltaY > requestedDelta;
+                    return `moved ${{groups.length}} groups by ${{deltaY.toFixed(1)}}px`
+                        + ` (requested ${{requestedDelta.toFixed(1)}}, print_h=${{rect.height()}}`
+                        + `, design_h=${{bounds.height.toFixed(0)}}${{clamped ? ', CLAMPED' : ''}})`;
+                }}
+            """)
+            print(f"  {move_result}")
+            await page.wait_for_timeout(1500)
 
         # --- Step 3: Select size via the variant dropdown ---
         print(f"Selecting size: {size}")

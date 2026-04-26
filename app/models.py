@@ -17,6 +17,10 @@ class ProductMapping(BaseModel):
     target_product_id: int
     variants: list[VariantMapping]
     design_image: str = "front_design.png"  # per-product design PNG in static/
+    # Qstomizer tee color printed under the design. Default White for legacy
+    # mappings; black/etc products set this at creation time so the webhook
+    # order flow (and TJ mockup pre-cache) pick the matching fabric.
+    color: str = "White"
 
 
 class MappingConfig(BaseModel):

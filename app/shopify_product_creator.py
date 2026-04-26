@@ -480,12 +480,37 @@ async def upload_product_image(
             timeout=60,
         )
         resp.raise_for_status()
-        return resp.json().get("image", {})
+        img = resp.json().get("image", {})
+
+        # Shopify's POST /images intermittently drops variant_ids (observed
+        # May 2026: 5/8 uploads in a refresh run lost variant linking).
+        # Follow up with a PUT whenever the returned variant_ids don't match
+        # what we asked for, so the gender/placement gallery swap works.
+        if variant_ids and set(img.get("variant_ids") or []) != set(variant_ids):
+            try:
+                put_resp = await client.put(
+                    _admin_url(f"products/{product_id}/images/{img['id']}.json"),
+                    headers=_headers(),
+                    json={"image": {"id": img["id"], "variant_ids": variant_ids}},
+                    timeout=30,
+                )
+                if put_resp.status_code < 400:
+                    img = put_resp.json().get("image", img)
+                else:
+                    logger.warning(
+                        f"variant_ids PUT failed for image {img.get('id')}: "
+                        f"{put_resp.status_code} {put_resp.text[:200]}"
+                    )
+            except Exception as e:
+                logger.warning(f"variant_ids PUT error for image {img.get('id')}: {e}")
+
+        return img
 
 
 async def create_mappings_for_product(
     omg_product: dict,
     design_image: str = "front_design.png",
+    color: str = "White",
 ) -> list[dict]:
     """Create product mappings: male variants → TJ Classic Tee, female → TJ Women's Tee.
 
@@ -562,6 +587,7 @@ async def create_mappings_for_product(
             target_product_id=tj_info["product_id"],
             variants=variant_mappings,
             design_image=design_image,
+            color=color,
         )
         mappings.append(mapping)
         logger.info(
@@ -588,6 +614,8 @@ async def fetch_mockup_from_qstomizer(
     product_type: str = "male",
     size: str = "L",
     placement: str = "front",
+    color: str = "White",
+    vertical_offset: float = -0.25,
 ) -> str | None:
     """Run Qstomizer automation and return the mockup image URL.
 
@@ -600,18 +628,19 @@ async def fetch_mockup_from_qstomizer(
         result = await customize_and_add_to_cart(
             product_type=product_type,
             size=size,
-            color="White",
+            color=color,
             image_path=design_image_path,
             quantity=1,
             headless=True,
             placement=placement,
+            vertical_offset=vertical_offset,
         )
         mockup_url = result.get("mockup_url")
         if mockup_url:
-            logger.info(f"Got {product_type} {placement} mockup: {mockup_url}")
+            logger.info(f"Got {product_type} {placement} {color} mockup: {mockup_url}")
         return mockup_url
     except Exception as e:
-        logger.error(f"Failed to get {product_type} mockup: {e}")
+        logger.error(f"Failed to get {product_type} {color} mockup: {e}")
         return None
 
 

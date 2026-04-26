@@ -83,6 +83,14 @@ async def _generate_proposal_impl() -> dict:
     """Internal implementation."""
     logger.info("Blog Writer: generating proposal")
 
+    # Sweep existing posts for broken product links before adding a new one.
+    # Failures here are logged but don't block the new-post generation.
+    try:
+        from app.agents.blog_link_qa import check_blog_links
+        await check_blog_links()
+    except Exception:
+        logger.exception("link QA pass failed — continuing to new-post generation")
+
     products = await _fetch_products()
     articles = await _fetch_existing_articles()
 
@@ -91,8 +99,15 @@ async def _generate_proposal_impl() -> dict:
         for p in products
     ) or "No products found"
 
-    existing_titles = "\n".join(
-        f"- {a['title']}" for a in articles
+    def _excerpt(a: dict) -> str:
+        import re
+        text = re.sub(r"<[^>]+>", " ", a.get("body_html") or a.get("summary_html") or "")
+        text = re.sub(r"\s+", " ", text).strip()
+        return text[:180]
+
+    existing_titles = "\n\n".join(
+        f"- {a['title']}\n  tags: {a.get('tags', '') or '(none)'}\n  excerpt: {_excerpt(a)}"
+        for a in articles
     ) or "No existing articles"
 
     from datetime import datetime, timezone
@@ -107,10 +122,15 @@ Target markets: Cyprus, Greece, Europe
 CURRENT PRODUCTS:
 {product_summary}
 
-EXISTING BLOG POSTS (do NOT repeat these topics):
+EXISTING BLOG POSTS — study these carefully, the new post must not overlap with any of them:
 {existing_titles}
 
-Write a new, unique SEO blog post. Choose a fresh angle that complements the existing content.
+Before writing, mentally list the topic clusters and angles already covered above (e.g. "summer styling", "Cyprus cultural references", "streetwear trends"). Your new post MUST:
+- Target a different primary keyword cluster than every existing post
+- Take an angle not represented above (e.g. if "styling guides" dominate, write a trend piece or a cultural explainer instead)
+- Avoid recycling hooks, anecdotes, or product spotlights that appear in existing excerpts
+
+In the `topic_angle` field, briefly explain how this post is distinct from the closest existing post.
 {_memory_prompt}"""
 
     blog_data = await llm_client.generate_json(
