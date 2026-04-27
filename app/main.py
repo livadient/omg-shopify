@@ -84,11 +84,57 @@ def _approve_confirm_page(
     """
 
 
-async def verify_mockup_matches_design(mockup_url: str, design_path: Path) -> dict:
+# Approximate Qstomizer fabric colors as RGB — used to flatten transparent
+# design PNGs onto the matching tee backdrop before vision comparison, so
+# light-text-on-transparent designs (e.g. white text on a Black tee) don't
+# render as blank to Claude.
+_TEE_COLOR_RGB: dict[str, tuple[int, int, int]] = {
+    "White": (255, 255, 255),
+    "Black": (0, 0, 0),
+    "Navy Blue": (30, 50, 90),
+    "Red": (200, 30, 30),
+    "Royal Blue": (40, 70, 150),
+    "Sport Grey": (160, 160, 160),
+}
+
+
+def _flatten_design_for_vision(design_path: Path, tee_color: str) -> tuple[bytes, str]:
+    """Return (image_bytes, mime) of the design ready for Claude vision.
+
+    If the source PNG has an alpha channel, it's composited onto a solid
+    backdrop matching the tee color so light-on-transparent artwork is
+    visible. Designs without alpha are passed through unchanged.
+    """
+    raw = design_path.read_bytes()
+    if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        return raw, "image/png" if raw.startswith(b"\x89PNG") else "image/jpeg"
+    try:
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(raw))
+        if img.mode not in ("RGBA", "LA") and "A" not in img.mode:
+            return raw, "image/png"
+        rgb = _TEE_COLOR_RGB.get(tee_color, _TEE_COLOR_RGB["White"])
+        backdrop = Image.new("RGB", img.size, rgb)
+        backdrop.paste(img.convert("RGBA"), mask=img.convert("RGBA").split()[3])
+        out = io.BytesIO()
+        backdrop.save(out, format="PNG")
+        return out.getvalue(), "image/png"
+    except Exception:
+        return raw, "image/png"
+
+
+async def verify_mockup_matches_design(
+    mockup_url: str, design_path: Path, tee_color: str = "White",
+) -> dict:
     """Download the Qstomizer mockup and compare it to our uploaded design using Claude vision.
 
     Catches Qstomizer _customorderid collisions where the mockup shows a completely
     different design than what we uploaded (e.g., another customer's custom order).
+
+    `tee_color` is the Qstomizer fabric color the mockup was rendered on; it's
+    used to composite transparent design PNGs onto a matching backdrop before
+    sending to Claude (otherwise white-on-transparent looks blank to vision).
 
     Returns {"match": True/False, "details": "..."}.
     """
@@ -117,9 +163,8 @@ async def verify_mockup_matches_design(mockup_url: str, design_path: Path) -> di
             mockup_b64 = base64.b64encode(mockup_bytes).decode("utf-8")
             mockup_mime = _guess_media_type(mockup_url, mockup_bytes)
 
-        design_bytes = design_path.read_bytes()
+        design_bytes, design_mime = _flatten_design_for_vision(design_path, tee_color)
         design_b64 = base64.b64encode(design_bytes).decode("utf-8")
-        design_mime = _guess_media_type(str(design_path), design_bytes)
 
         api_client = llm_client._get_client()
         response = await llm_client._create_with_retry(
@@ -131,8 +176,8 @@ async def verify_mockup_matches_design(mockup_url: str, design_path: Path) -> di
                 "role": "user",
                 "content": [
                     {"type": "text", "text": (
-                        "Image 1 is our original design artwork. "
-                        "Image 2 is a t-shirt mockup that should show the same design printed on it. "
+                        f"Image 1 is our original design artwork (rendered on a {tee_color} backdrop matching the tee fabric). "
+                        f"Image 2 is a t-shirt mockup of a {tee_color} tee that should show the same design printed on it. "
                         "Do they show the SAME design? Focus on whether the core artwork, "
                         "graphic elements, and text CONTENT are identical. "
                         "IGNORE these normal mockup differences: smaller scale, different positioning "

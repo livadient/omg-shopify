@@ -48,6 +48,7 @@ async def _run_design_qa_impl() -> dict:
                 "design_image": img,
                 "product_type": ptype,
                 "size": "L" if ptype == "male" else "M",
+                "color": m.get("color") or "White",
             }
 
     tests = list(seen.values())
@@ -59,9 +60,10 @@ async def _run_design_qa_impl() -> dict:
         design_img = test["design_image"]
         ptype = test["product_type"]
         size = test["size"]
+        color = test["color"]
         design_path = STATIC_DIR / design_img
 
-        logger.info(f"[{i}/{len(tests)}] {handle} ({ptype} {size})")
+        logger.info(f"[{i}/{len(tests)}] {handle} ({ptype} {size} {color})")
 
         if not design_path.exists():
             logger.error(f"  SKIP: {design_img} not found")
@@ -76,7 +78,7 @@ async def _run_design_qa_impl() -> dict:
             result = await customize_and_add_to_cart(
                 product_type=ptype,
                 size=size,
-                color="White",
+                color=color,
                 image_path=str(design_path),
                 quantity=1,
                 headless=True,
@@ -93,7 +95,7 @@ async def _run_design_qa_impl() -> dict:
                 })
                 continue
 
-            verification = await verify_mockup_matches_design(mockup_url, design_path)
+            verification = await verify_mockup_matches_design(mockup_url, design_path, tee_color=color)
             match = verification.get("match", True)
             details = verification.get("details", "")
             status = "PASS" if match else "FAIL"
