@@ -366,7 +366,7 @@ Run unit tests: `pytest tests/ -v`
 
 The service connects to the OMG Shopify store via a custom app using OAuth. The app has the following scopes:
 
-`read_orders`, `write_fulfillments`, `read_products`, `write_products`, `read_customers`, `write_customers`, `read_inventory`, `write_inventory`, `read_shipping`, `write_shipping`, `read_order_edits`, `write_order_edits`, `read_translations`, `write_translations`, `read_locales`, `write_locales`, `read_markets`, `write_markets`, `read_online_store_navigation`, `write_online_store_navigation`, `read_themes`, `write_themes`
+`read_orders`, `write_fulfillments`, `read_products`, `write_products`, `read_customers`, `write_customers`, `read_inventory`, `write_inventory`, `read_shipping`, `write_shipping`, `read_order_edits`, `write_order_edits`, `read_translations`, `write_translations`, `read_locales`, `write_locales`, `read_markets`, `write_markets`, `read_script_tags`, `write_script_tags`, `read_online_store_navigation`, `write_online_store_navigation`, `read_themes`, `write_themes`
 
 ### Setup
 
