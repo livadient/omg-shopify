@@ -1996,6 +1996,18 @@ async def fix_shipping_profile(product_ids: list[int] | None = None):
     return {"status": "done", "results": results}
 
 
+@app.post("/fix-archive-redirects")
+async def fix_archive_redirects(target: str | None = None):
+    """301 every archived product's /products/<handle> URL to a sensible target.
+
+    Default target: /collections/t-shirts. Skips products that already have
+    a redirect at that path. Safe to re-run.
+    """
+    from app.shopify_redirects import DEFAULT_REDIRECT_TARGET, redirect_archived_products
+
+    return await redirect_archived_products(target or DEFAULT_REDIRECT_TARGET)
+
+
 @app.post("/sync-product/{product_id}")
 async def sync_product(product_id: int):
     """Download design image from Shopify and create mappings for a product."""
