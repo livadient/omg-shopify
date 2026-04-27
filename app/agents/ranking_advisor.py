@@ -167,19 +167,24 @@ GOOGLE ADS KEYWORD PLANNER DATA (real CPC and volume):
 
 
 async def _fetch_products() -> list[dict]:
-    """Fetch current OMG product catalog via Admin API."""
+    """Fetch live OMG product catalog (active + published) via Admin API.
+
+    Filters out archived/draft/unpublished products so Atlas doesn't recommend
+    SEO fixes for URLs the storefront intentionally 404s.
+    """
     token = settings.omg_shopify_admin_token
     if not token:
         return []
 
     domain = settings.omg_shopify_domain
-    url = f"https://{domain}/admin/api/2024-01/products.json?limit=50"
+    url = f"https://{domain}/admin/api/2024-01/products.json?status=active&limit=250"
     headers = {"X-Shopify-Access-Token": token}
 
     async with httpx.AsyncClient() as client:
         resp = await client.get(url, headers=headers, timeout=15)
         if resp.status_code == 200:
-            return resp.json().get("products", [])
+            products = resp.json().get("products", [])
+            return [p for p in products if p.get("published_at")]
     return []
 
 
