@@ -1010,7 +1010,7 @@ Propose a campaign for the {market_name} market. Incorporate relevant trends if 
         </div>
 
         <div style="padding:20px;border:1px solid #e5e7eb;border-top:none;">
-            <p style="margin:0 0 8px;color:#6b7280;font-size:13px;">Campaign will be created in <strong>PAUSED</strong> state. You can enable it from Google Ads after review.</p>
+            <p style="margin:0 0 8px;color:#6b7280;font-size:13px;">Approving will email you a paste-ready setup (campaign type, budget, locations, keywords, ad copy). Create the campaign in the Google Ads UI in <strong>paused</strong> state — takes ~2 min by hand.</p>
             <div style="text-align:center;margin:16px 0;">
                 <a href="{approve_url}" style="display:inline-block;padding:12px 32px;background:#059669;color:white;text-decoration:none;border-radius:6px;font-weight:bold;font-size:16px;margin-right:12px;">APPROVE</a>
                 <a href="{reject_url}" style="display:inline-block;padding:12px 32px;background:#dc2626;color:white;text-decoration:none;border-radius:6px;font-weight:bold;font-size:16px;">REJECT</a>
@@ -1032,51 +1032,119 @@ Propose a campaign for the {market_name} market. Incorporate relevant trends if 
     return proposal
 
 
+_MARKET_TARGETING_HINTS = {
+    "CY": {"locations": "Cyprus", "languages": "Greek + English"},
+    "GR": {"locations": "Greece", "languages": "Greek"},
+    "EU": {"locations": "Europe (or hand-pick: DE, FR, IT, ES, NL, BE, IE)",
+           "languages": "English"},
+}
+
+
+def _format_keyword_for_paste(kw: dict) -> str:
+    """Format a keyword for direct paste into the Google Ads UI.
+
+    Google Ads keyword input syntax: bare = broad, "phrase", [exact].
+    """
+    text = kw.get("keyword", "").strip()
+    match = (kw.get("match_type") or "PHRASE").upper()
+    if match == "EXACT":
+        return f"[{text}]"
+    if match == "PHRASE":
+        return f'"{text}"'
+    return text
+
+
 async def execute_campaign_approval(proposal_id: str) -> dict:
-    """Execute an approved campaign proposal — create it in Google Ads."""
+    """Mark an approved campaign proposal and email a paste-ready setup.
+
+    Atlas does NOT create the campaign in Google Ads programmatically — the
+    Google Ads developer token only has test-account access (Basic-access
+    application is pending). Instead, this records the proposal as approved
+    and emails a copy/paste-friendly version that takes ~2 min to set up by
+    hand in the Google Ads UI.
+    """
     from app.agents.approval import get_proposal, update_status
-    from app.agents.google_ads_manager import create_search_campaign
 
     proposal = get_proposal(proposal_id)
     if not proposal:
         raise ValueError(f"Proposal {proposal_id} not found")
 
-    result = create_search_campaign(proposal["data"])
+    data = proposal["data"]
     update_status(proposal_id, "approved")
 
-    # Send confirmation email
+    market = data.get("market", "EU")
+    targeting = _MARKET_TARGETING_HINTS.get(market, _MARKET_TARGETING_HINTS["EU"])
+    keywords = data.get("keywords", [])
+    headlines = data.get("ad_headlines", [])
+    descriptions = data.get("ad_descriptions", [])
+
+    keyword_lines = "\n".join(_format_keyword_for_paste(kw) for kw in keywords)
+    headline_lines = "\n".join(headlines)
+    description_lines = "\n".join(descriptions)
+
+    pre_block = (
+        'background:#0b1020;color:#d6e4ff;padding:12px;border-radius:6px;'
+        'font-family:Menlo,Consolas,monospace;font-size:12px;white-space:pre-wrap;'
+        'overflow-x:auto;'
+    )
+
     html = f"""
-    <div style="font-family:sans-serif;max-width:650px;margin:0 auto;color:#111;">
+    <div style="font-family:sans-serif;max-width:680px;margin:0 auto;color:#111;">
         <div style="background:#059669;color:white;padding:20px;border-radius:8px 8px 0 0;">
-            <h2 style="margin:0;">Campaign Created!</h2>
-            <p style="margin:4px 0 0;opacity:0.9;">Atlas has set up your Google Ads campaign</p>
+            <h2 style="margin:0;">Approved — paste these into Google Ads</h2>
+            <p style="margin:4px 0 0;opacity:0.9;">Atlas can't create campaigns via the API yet (dev token still on test-account access). Set this up by hand — should take about 2 minutes.</p>
         </div>
+
         <div style="padding:20px;border:1px solid #e5e7eb;">
-            <table style="font-size:14px;">
-                <tr><td style="padding:4px 8px;color:#6b7280;">Campaign:</td><td><strong>{proposal['data'].get('campaign_name', '?')}</strong></td></tr>
-                <tr><td style="padding:4px 8px;color:#6b7280;">Campaign ID:</td><td>{result['campaign_id']}</td></tr>
-                <tr><td style="padding:4px 8px;color:#6b7280;">Budget:</td><td>EUR {result['daily_budget_eur']}/day</td></tr>
-                <tr><td style="padding:4px 8px;color:#6b7280;">Keywords:</td><td>{result['keywords_count']}</td></tr>
-                <tr><td style="padding:4px 8px;color:#6b7280;">Status:</td><td><strong style="color:#d97706;">PAUSED</strong></td></tr>
+            <h3 style="margin:0 0 12px;color:#1e40af;">{data.get('campaign_name', 'Untitled')}</h3>
+            <table style="width:100%;font-size:14px;">
+                <tr><td style="padding:4px 8px;color:#6b7280;width:160px;">Campaign type:</td><td><strong>Search</strong></td></tr>
+                <tr><td style="padding:4px 8px;color:#6b7280;">Status when created:</td><td><strong style="color:#d97706;">PAUSED</strong></td></tr>
+                <tr><td style="padding:4px 8px;color:#6b7280;">Networks:</td><td>Search Network only (uncheck Display Network)</td></tr>
+                <tr><td style="padding:4px 8px;color:#6b7280;">Daily budget:</td><td><strong>EUR {data.get('daily_budget_eur', '?')}</strong></td></tr>
+                <tr><td style="padding:4px 8px;color:#6b7280;">Bid strategy:</td><td>Manual CPC, max CPC <strong>EUR {data.get('max_cpc_eur', '?')}</strong></td></tr>
+                <tr><td style="padding:4px 8px;color:#6b7280;">Locations:</td><td>{targeting['locations']}</td></tr>
+                <tr><td style="padding:4px 8px;color:#6b7280;">Languages:</td><td>{targeting['languages']}</td></tr>
+                <tr><td style="padding:4px 8px;color:#6b7280;">Final URL:</td><td><a href="{data.get('final_url', '#')}" style="color:#2563eb;">{data.get('final_url', '?')}</a></td></tr>
             </table>
-            <p style="margin-top:16px;padding:12px;background:#fef3c7;border-radius:6px;font-size:13px;">
-                The campaign is <strong>paused</strong>. Go to
-                <a href="https://ads.google.com/aw/campaigns?campaignId={result['campaign_id']}" style="color:#2563eb;">Google Ads</a>
-                to review and enable it when ready.
-            </p>
         </div>
+
+        <div style="padding:20px;border:1px solid #e5e7eb;border-top:none;">
+            <h4 style="margin:0 0 8px;color:#dc2626;">Keywords ({len(keywords)})</h4>
+            <p style="font-size:12px;color:#6b7280;margin:0 0 8px;">Paste straight into the keyword field. Bare = broad, "quoted" = phrase, [bracketed] = exact.</p>
+            <div style="{pre_block}">{keyword_lines}</div>
+        </div>
+
+        <div style="padding:20px;border:1px solid #e5e7eb;border-top:none;">
+            <h4 style="margin:0 0 8px;color:#7c3aed;">Headlines ({len(headlines)})</h4>
+            <p style="font-size:12px;color:#6b7280;margin:0 0 8px;">Max 30 chars each. Add 3–15.</p>
+            <div style="{pre_block}">{headline_lines}</div>
+        </div>
+
+        <div style="padding:20px;border:1px solid #e5e7eb;border-top:none;">
+            <h4 style="margin:0 0 8px;color:#7c3aed;">Descriptions ({len(descriptions)})</h4>
+            <p style="font-size:12px;color:#6b7280;margin:0 0 8px;">Max 90 chars each. Add 2–4.</p>
+            <div style="{pre_block}">{description_lines}</div>
+        </div>
+
         <div style="padding:12px;text-align:center;color:#9ca3af;font-size:12px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">
-            Atlas | Performance review will be in tomorrow's briefing
+            Atlas | Proposal {proposal_id} marked approved
         </div>
     </div>
     """
 
     await send_agent_email(
-        subject=f"[Atlas] Campaign live — {proposal['data'].get('campaign_name', 'New')}",
+        subject=f"[Atlas] Paste-ready setup — {data.get('campaign_name', 'New')}",
         html_body=html,
     )
 
-    return result
+    return {
+        "status": "approved",
+        "delivery": "manual_paste",
+        "campaign_name": data.get("campaign_name"),
+        "keywords_count": len(keywords),
+        "daily_budget_eur": data.get("daily_budget_eur"),
+    }
 
 
 # ── Performance Review ───────────────────────────────────────────────

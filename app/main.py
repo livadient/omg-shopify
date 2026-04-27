@@ -1657,7 +1657,12 @@ async def ads_approve(proposal_id: str, token: str = ""):
 
 @app.post("/agents/ads/approve", response_class=HTMLResponse)
 async def ads_approve_confirm(proposal_id: str = Form(...), token: str = Form(...)):
-    """Actually approve a campaign proposal — creates it in Google Ads (paused)."""
+    """Approve a campaign proposal — Atlas emails a paste-ready setup.
+
+    Atlas does NOT create campaigns via the Google Ads API (dev token is on
+    test-account access only). Approving marks the proposal and emails the
+    full configuration in copy/paste-friendly form for manual setup.
+    """
     from app.agents.approval import claim_proposal, update_status
     proposal = claim_proposal(proposal_id, token)
     if not proposal:
@@ -1670,19 +1675,17 @@ async def ads_approve_confirm(proposal_id: str = Form(...), token: str = Form(..
         result = await execute_campaign_approval(proposal_id)
         return HTMLResponse(f"""
         <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center;">
-            <h1 style="color:#059669;">Campaign Created!</h1>
+            <h1 style="color:#059669;">Approved — paste-ready setup emailed</h1>
             <p><strong>{proposal['data'].get('campaign_name', '?')}</strong></p>
-            <p>Campaign ID: {result.get('campaign_id', '?')}</p>
             <p>Daily Budget: EUR {result.get('daily_budget_eur', '?')}</p>
             <p>Keywords: {result.get('keywords_count', '?')}</p>
-            <p style="color:#d97706;font-weight:bold;">Status: PAUSED</p>
-            <p><a href="https://ads.google.com/aw/campaigns?campaignId={result.get('campaign_id', '')}" style="color:#2563eb;">View in Google Ads</a></p>
-            <p style="color:#6b7280;margin-top:16px;">Enable the campaign in Google Ads when you're ready to go live.</p>
+            <p style="color:#6b7280;margin-top:16px;">Check your inbox — Atlas just emailed you the full setup. Create the campaign in the Google Ads UI (paused) using those values.</p>
+            <p><a href="https://ads.google.com/aw/campaigns" style="color:#2563eb;">Open Google Ads</a></p>
         </body></html>
         """)
     except Exception as e:
         update_status(proposal_id, "pending")
-        return HTMLResponse(f"<h1>Error creating campaign</h1><p>{e}</p>", status_code=500)
+        return HTMLResponse(f"<h1>Error approving proposal</h1><p>{e}</p>", status_code=500)
 
 
 @app.get("/agents/ads/reject/{proposal_id}", response_class=HTMLResponse)
