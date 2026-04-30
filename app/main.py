@@ -626,6 +626,11 @@ async def _process_order_background(
             if not design_file.exists():
                 design_file = FRONT_DESIGN_IMAGE  # fallback to default
 
+            from app.qstomizer_offsets import get_offsets
+            v_off, h_off, pad = get_offsets(
+                source_handle, product_type, placement,
+                design_path=str(design_file),
+            )
             result = await customize_and_add_to_cart(
                 product_type=product_type,
                 size=size,
@@ -635,6 +640,9 @@ async def _process_order_background(
                 headless=True,
                 shipping=shipping,
                 placement=placement,
+                vertical_offset=v_off,
+                horizontal_offset=h_off,
+                vertical_safety_pad_px=pad,
             )
             item["cart_url"] = result["checkout_url"]
             item["mockup_url"] = result.get("mockup_url")
@@ -835,6 +843,13 @@ async def _process_manual_order_background(
 
     for item in items:
         try:
+            from app.qstomizer_offsets import get_offsets
+            # Manual orders have no source handle, so defaults apply
+            # (with graphic-vs-text auto-detection from the design PNG).
+            v_off, h_off, pad = get_offsets(
+                None, item["product_type"], "front",
+                design_path=str(FRONT_DESIGN_IMAGE),
+            )
             result = await customize_and_add_to_cart(
                 product_type=item["product_type"],
                 size=item["variant_title"],
@@ -843,6 +858,9 @@ async def _process_manual_order_background(
                 quantity=item["quantity"],
                 headless=True,
                 shipping=shipping,
+                vertical_offset=v_off,
+                horizontal_offset=h_off,
+                vertical_safety_pad_px=pad,
             )
             item["cart_url"] = result["checkout_url"]
             item["mockup_url"] = result.get("mockup_url")

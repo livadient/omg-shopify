@@ -774,12 +774,25 @@ async def _precache_mockups(
         ("female", "M", "front"),
         ("female", "M", "back"),
     ]
+    from app.qstomizer_offsets import get_offsets
+    # Mango runs at concept-creation time before the OMG handle exists,
+    # so we use the to-be slug from the concept name (Mango sets
+    # design_image filename to match), but for new products with no
+    # override the defaults still apply.
+    handle_guess = Path(design_image_path).stem.replace("design_", "")
     for ptype, size, placement in combos:
         try:
             logger.info(f"Pre-caching {ptype} {placement} {color} mockup for '{concept_name}'...")
+            v_off, h_off, pad = get_offsets(
+                handle_guess, ptype, placement,
+                design_path=design_image_path,
+            )
             mockup_url = await fetch_mockup_from_qstomizer(
                 design_image_path, ptype, size,
-                placement=placement, color=color, vertical_offset=vertical_offset,
+                placement=placement, color=color,
+                vertical_offset=v_off,
+                horizontal_offset=h_off,
+                vertical_safety_pad_px=pad,
             )
             if mockup_url:
                 filename = f"mockup_cache_{Path(design_image_path).stem}_{ptype}_{placement}.png"
