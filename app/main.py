@@ -365,16 +365,9 @@ TEST_WEBHOOK_HTML = """
        without placing a real order.</p>
     <form id="form">
         <label>Product:</label>
-        <select id="product_type">
-            <option value="male">Male Tee (Classic Tee up to 5XL)</option>
-            <option value="female">Female Tee (Women's T-Shirt)</option>
-        </select>
+        <select id="product_key" style="width:100%;max-width:480px;"></select>
         <label>Size:</label>
-        <select id="size">
-            <option>S</option><option selected>M</option><option>L</option>
-            <option>XL</option><option>2XL</option><option>3XL</option>
-            <option>4XL</option><option>5XL</option>
-        </select>
+        <select id="size"></select>
         <label>Quantity:</label>
         <input type="number" id="qty" value="1" min="1" max="10" style="width:80px;">
         <label>Customer Name:</label>
@@ -393,21 +386,30 @@ TEST_WEBHOOK_HTML = """
        <br>Shipping method will be auto-selected: CY=Home Delivery, GR=Geniki Taxydromiki, FR=Postal.</p>
     <div id="status"></div>
     <script>
-        const VARIANT_MAP = %VARIANT_MAP%;
-        document.getElementById('product_type').addEventListener('change', function() {
-            const sizeSelect = document.getElementById('size');
-            const sizes = Object.keys(VARIANT_MAP[this.value]);
-            sizeSelect.innerHTML = sizes.map(s => '<option>' + s + '</option>').join('');
-        });
+        const PRODUCTS = %PRODUCTS%;
+        const productSel = document.getElementById('product_key');
+        const sizeSel = document.getElementById('size');
+        function rebuildProductOptions() {
+            productSel.innerHTML = PRODUCTS.map(p =>
+                '<option value="' + p.key + '">' + p.label + '</option>').join('');
+        }
+        function rebuildSizeOptions() {
+            const p = PRODUCTS.find(x => x.key === productSel.value);
+            const sizes = p ? Object.keys(p.sizes) : [];
+            sizeSel.innerHTML = sizes.map(s => '<option>' + s + '</option>').join('');
+        }
+        rebuildProductOptions();
+        rebuildSizeOptions();
+        productSel.addEventListener('change', rebuildSizeOptions);
         document.getElementById('form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const status = document.getElementById('status');
-            const type = document.getElementById('product_type').value;
-            const size = document.getElementById('size').value;
+            const product = PRODUCTS.find(p => p.key === productSel.value);
+            const size = sizeSel.value;
             const qty = parseInt(document.getElementById('qty').value);
             const name = document.getElementById('customer_name').value.split(' ');
-            const variant = VARIANT_MAP[type][size];
-            if (!variant) { alert('No mapping for ' + type + ' ' + size); return; }
+            const variant_id = product && product.sizes[size];
+            if (!variant_id) { alert('No mapping for ' + product.label + ' ' + size); return; }
             status.style.display = 'block';
             status.className = 'loading';
             status.textContent = 'Sending test webhook...';
@@ -417,9 +419,8 @@ TEST_WEBHOOK_HTML = """
             const order = {
                 id: Date.now(), order_number: 'TEST-' + Date.now(),
                 line_items: [{
-                    variant_id: variant.source, quantity: qty,
-                    title: type === 'male' ? 'Astous na Laloun Graphic Tee Male - EU Edition'
-                                           : 'Astous na Laloun Graphic Tee Female - EU Edition',
+                    variant_id: variant_id, quantity: qty,
+                    title: product.title,
                     variant_title: size,
                 }],
                 customer: { first_name: name[0] || 'Test', last_name: name.slice(1).join(' ') || 'Customer' },
@@ -459,19 +460,38 @@ TEST_WEBHOOK_HTML = """
 
 @app.get("/test-webhook", response_class=HTMLResponse)
 async def test_webhook_form():
-    """Serve a form to send a fake webhook for testing."""
+    """Serve a form to send a fake webhook for testing.
+
+    Builds a per-mapping list keyed by (source_handle, target_product_id)
+    so the form can pick a SPECIFIC product/gender combo. The previous
+    (gender, size)-only key collapsed every product onto the same slot
+    (last-write-wins), which made the form silently submit a different
+    product's variant_id than the one the user thought they picked.
+    """
     import json
+
     config = load_mappings()
-    # Build variant map: {product_type: {size: {source: id, target: id}}}
-    variant_map = {"male": {}, "female": {}}
-    for mapping in config.mappings:
-        ptype = "female" if "female" in mapping.source_handle else "male"
-        for v in mapping.variants:
-            variant_map[ptype][v.source_title] = {
-                "source": v.source_variant_id,
-                "target": v.target_variant_id,
-            }
-    return TEST_WEBHOOK_HTML.replace("%VARIANT_MAP%", json.dumps(variant_map))
+    products = []  # [{key, label, gender, title, handle, sizes: {size: src_id}}]
+    for m in config.mappings:
+        gender = "female" if "female" in m.source_handle else "male"
+        sizes = {v.source_title: v.source_variant_id for v in m.variants}
+        if not sizes:
+            continue
+        # Use a unique key (handle + product_id) — some handles map to
+        # both a male and a female TJ product, distinguished by target.
+        key = f"{m.source_handle}__{m.target_product_id}"
+        label = f"{m.source_handle} ({gender})"
+        products.append({
+            "key": key,
+            "label": label,
+            "gender": gender,
+            "title": m.source_handle.replace("-", " ").title(),
+            "handle": m.source_handle,
+            "sizes": sizes,
+        })
+    products.sort(key=lambda p: p["label"])
+
+    return TEST_WEBHOOK_HTML.replace("%PRODUCTS%", json.dumps(products))
 
 
 @app.middleware("http")
