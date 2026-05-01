@@ -616,6 +616,8 @@ async def fetch_mockup_from_qstomizer(
     placement: str = "front",
     color: str = "White",
     vertical_offset: float = -0.25,
+    horizontal_offset: float = 0.0,
+    vertical_safety_pad_px: int = 4,
 ) -> str | None:
     """Run Qstomizer automation and return the mockup image URL.
 
@@ -634,6 +636,8 @@ async def fetch_mockup_from_qstomizer(
             headless=True,
             placement=placement,
             vertical_offset=vertical_offset,
+            horizontal_offset=horizontal_offset,
+            vertical_safety_pad_px=vertical_safety_pad_px,
         )
         mockup_url = result.get("mockup_url")
         if mockup_url:

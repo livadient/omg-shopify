@@ -73,6 +73,8 @@ async def customize_and_add_to_cart(
     shipping: dict | None = None,
     placement: str = "front",
     vertical_offset: float = -0.25,
+    horizontal_offset: float = 0.0,
+    vertical_safety_pad_px: int = 4,
 ) -> str:
     """Open Qstomizer, upload design, select color and size, add to cart,
     and optionally fill in checkout shipping details.
@@ -107,6 +109,8 @@ async def customize_and_add_to_cart(
             shipping=shipping,
             placement=placement,
             vertical_offset=vertical_offset,
+            horizontal_offset=horizontal_offset,
+            vertical_safety_pad_px=vertical_safety_pad_px,
         ),
     )
 
@@ -121,6 +125,8 @@ async def _customize_and_add_to_cart_impl(
     shipping: dict | None = None,
     placement: str = "front",
     vertical_offset: float = -0.25,
+    horizontal_offset: float = 0.0,
+    vertical_safety_pad_px: int = 4,
 ) -> str:
     """Actual Playwright implementation."""
     image_path = Path(image_path).resolve()
@@ -282,11 +288,12 @@ async def _customize_and_add_to_cart_impl(
         # the print higher up (upper-back). `vertical_offset` is a fraction
         # of the PRINT-AREA height — negative = up (toward collar), positive
         # = down, 0 = leave Qstomizer's default alone.
-        if vertical_offset:
-            print(f"Nudging placed image by vertical_offset={vertical_offset} of print-area height...")
+        if vertical_offset or horizontal_offset:
+            print(f"Nudging placed image by vertical_offset={vertical_offset} of print-area height, horizontal_offset={horizontal_offset} of print-area width...")
             move_result = await qf.evaluate(f"""
                 () => {{
                     const offset = {vertical_offset};
+                    const hOffset = {horizontal_offset};
                     if (typeof Konva === 'undefined') return 'no_konva';
                     // The active stage is the one whose layer contains
                     // Group nodes named grupoimage* — the other stages are
@@ -325,7 +332,7 @@ async def _customize_and_add_to_cart_impl(
                     // Clamp: keep the rendered top inside the print area
                     // with a small safety pad so tall designs don't clip
                     // the collar/shoulder zone.
-                    const safetyPad = 4;
+                    const safetyPad = {vertical_safety_pad_px};
                     const maxUpwardMove = -(bounds.y - printTop - safetyPad);
                     const deltaY = offset < 0
                         ? Math.max(requestedDelta, maxUpwardMove)
@@ -337,7 +344,9 @@ async def _customize_and_add_to_cart_impl(
                     // Compute the delta needed to center the rendered design
                     // on the print-area centre and apply it alongside deltaY.
                     const renderedCenterX = bounds.x + bounds.width / 2;
-                    const deltaX = printCenterX - renderedCenterX;
+                    // Auto-center, then apply user-supplied horizontal nudge.
+                    // hOffset is a fraction of print-area width (positive = right).
+                    const deltaX = (printCenterX - renderedCenterX) + rect.width() * hOffset;
                     groups.forEach(node => {{
                         node.y(node.y() + deltaY);
                         node.x(node.x() + deltaX);
