@@ -30,3 +30,10 @@ jobs:
             [ -f product_mappings.json.bak ] && cp product_mappings.json.bak product_mappings.json && rm product_mappings.json.bak
             docker compose down --remove-orphans
             docker compose up -d --build
+            # Reclaim disk: drop the now-untagged previous image and old
+            # build-cache layers. Without this, the 29GB VM disk fills up
+            # after a few deploys (each rebuild adds ~4GB of layers).
+            # --keep-storage 2g keeps the most recent caches so the next
+            # build still benefits from layer caching.
+            docker image prune -af
+            docker builder prune -af --keep-storage 2g
