@@ -1048,18 +1048,40 @@ async def fulfill_order_parse(request: Request) -> dict:
 
 @app.post("/fulfill-order")
 async def fulfill_order_submit(request: Request) -> dict:
-    """Fulfill an OMG order with tracking info."""
+    """Fulfill an OMG order with tracking info.
+
+    Catches Admin-API HTTP errors and returns them as JSON so the
+    front-end form (which JSON.parses every response) gets a parseable
+    error message instead of FastAPI's default 500 + HTML page.
+    """
     body = await request.json()
     order_number = body.get("order_number", "").strip()
     if not order_number:
         return {"status": "error", "detail": "Order number is required"}
 
-    return await fulfill_order(
-        order_number=order_number,
-        tracking_number=body.get("tracking_number", ""),
-        tracking_url=body.get("tracking_url", ""),
-        tracking_company=body.get("tracking_company", ""),
-    )
+    try:
+        return await fulfill_order(
+            order_number=order_number,
+            tracking_number=body.get("tracking_number", ""),
+            tracking_url=body.get("tracking_url", ""),
+            tracking_company=body.get("tracking_company", ""),
+        )
+    except httpx.HTTPStatusError as e:
+        body_preview = e.response.text[:300] if e.response is not None else ""
+        detail = (
+            f"Shopify Admin API returned {e.response.status_code} for "
+            f"{e.request.url}. {body_preview}"
+        )
+        if e.response is not None and e.response.status_code in (401, 403):
+            detail += (
+                " — token likely missing scopes. Re-authorize at "
+                "/shopify-auth and update OMG_SHOPIFY_ADMIN_TOKEN."
+            )
+        logger.exception(f"fulfill_order failed: {detail}")
+        return {"status": "error", "detail": detail}
+    except Exception as e:
+        logger.exception(f"fulfill_order unexpected error: {e}")
+        return {"status": "error", "detail": f"{type(e).__name__}: {e}"}
 
 
 # ─── AI Agent Endpoints ────────────────────────────────────────────────
@@ -1806,7 +1828,7 @@ async def shopify_auth_start():
     domain = settings.omg_shopify_domain
     if not domain.endswith(".myshopify.com"):
         domain = "52922c-2.myshopify.com"
-    scopes = "read_orders,write_fulfillments,read_products,write_products,read_customers,write_customers,read_inventory,write_inventory,read_locations,read_shipping,write_shipping,read_order_edits,write_order_edits,read_content,write_content,read_translations,write_translations,read_locales,write_locales,read_markets,write_markets,read_script_tags,write_script_tags"
+    scopes = "read_orders,write_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,read_products,write_products,read_customers,write_customers,read_inventory,write_inventory,read_locations,read_shipping,write_shipping,read_order_edits,write_order_edits,read_content,write_content,read_translations,write_translations,read_locales,write_locales,read_markets,write_markets,read_script_tags,write_script_tags"
     redirect_uri = "http://localhost:8080/shopify-auth/callback"
     auth_url = (
         f"https://{domain}/admin/oauth/authorize"
