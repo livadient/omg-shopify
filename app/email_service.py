@@ -157,6 +157,10 @@ def _build_html(
             ("Country", shipping.get("country_code", "")),
             ("Phone", shipping.get("phone", "")),
             ("Email", shipping.get("email", "")),
+            # Buyer must pick this manually on TJ's checkout — modern Shopify
+            # checkout has no URL param to pre-select a shipping method, so
+            # showing the OMG-side selection here is the next-best cue.
+            ("Shipping method", shipping.get("shipping_method", "")),
         ]
         ship_rows = "".join(
             f"<tr><td style='padding:4px 8px;color:#6b7280;'>{k}:</td>"
