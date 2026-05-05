@@ -29,11 +29,17 @@ jobs:
             git pull origin main
             [ -f product_mappings.json.bak ] && cp product_mappings.json.bak product_mappings.json && rm product_mappings.json.bak
             docker compose down --remove-orphans
+            # Prune BEFORE the build, not after. The build itself COPYs
+            # the static/ folder (~1GB and growing) and adds another
+            # ~4GB of image layers; on a near-full 29GB disk it errors
+            # with "no space left on device" and the post-build prune
+            # never gets a chance to run. Doing the prune first frees
+            # 5-10GB so the build has room to write.
+            docker image prune -af
+            docker builder prune -af --keep-storage 2g
+            docker container prune -f
             docker compose up -d --build
-            # Reclaim disk: drop the now-untagged previous image and old
-            # build-cache layers. Without this, the 29GB VM disk fills up
-            # after a few deploys (each rebuild adds ~4GB of layers).
-            # --keep-storage 2g keeps the most recent caches so the next
-            # build still benefits from layer caching.
+            # Second prune trims the now-dangling previous image so the
+            # disk doesn't accumulate after each successful deploy.
             docker image prune -af
             docker builder prune -af --keep-storage 2g
