@@ -22,10 +22,14 @@ async def send_order_notification(
     currency: str,
     items: list[dict],
     shipping: dict | None = None,
+    recipients_override: list[str] | None = None,
 ) -> None:
     """Send an HTML email with order details and cart/Qstomizer links.
 
     Args:
+        recipients_override: when provided, REPLACES settings.email_recipients
+            for this send. Used for TEST-* webhooks (and any one-off resends
+            from a CLI helper) so test traffic doesn't notify everyone.
         order_number: Shopify order number
         customer_name: Customer full name
         order_total: Total price string
@@ -41,10 +45,15 @@ async def send_order_notification(
         logger.warning("No SMTP host configured, skipping notification")
         return
 
-    # Merge base + extra recipients (case-insensitive dedupe)
+    # Merge base + extra recipients (case-insensitive dedupe). When
+    # recipients_override is supplied (TEST-* runs, manual resends), it
+    # REPLACES settings.email_recipients entirely so test traffic only
+    # notifies the requested address(es).
+    base = list(recipients_override) if recipients_override is not None else list(settings.email_recipients)
+    extras = [] if recipients_override is not None else ORDER_NOTIFICATION_EXTRA_RECIPIENTS
     recipients: list[str] = []
     seen: set[str] = set()
-    for addr in list(settings.email_recipients) + ORDER_NOTIFICATION_EXTRA_RECIPIENTS:
+    for addr in base + extras:
         key = addr.lower().strip()
         if key and key not in seen:
             seen.add(key)

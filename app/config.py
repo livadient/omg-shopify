@@ -18,6 +18,14 @@ class Settings(BaseModel):
     smtp_password: str = ""
     email_sender: str = ""
     email_recipients: list[str] = []
+    # Vangelis's personal email — used as the buyer-side checkout email on
+    # TJ (the dropship workflow has him as the actual payer, not the OMG
+    # customer) and as the sole recipient for TEST-* webhook runs so test
+    # traffic doesn't notify everyone.
+    test_email_recipient: str = "livadient@gmail.com"
+    tj_checkout_email: str = "livadient@gmail.com"
+    # Discount code applied at TJ checkout when rebuilding the cart
+    tj_discount_code: str = "OHMANGOESSHOP"
     # OMG Shopify Admin API
     omg_shopify_domain: str = "52922c-2.myshopify.com"
     omg_shopify_admin_token: str = ""
@@ -55,6 +63,9 @@ settings = Settings(
     smtp_password=os.getenv("SMTP_PASSWORD", ""),
     email_sender=os.getenv("EMAIL_SENDER", ""),
     email_recipients=_parse_recipients(os.getenv("EMAIL_RECIPIENTS", "")),
+    test_email_recipient=os.getenv("TEST_EMAIL_RECIPIENT", "livadient@gmail.com"),
+    tj_checkout_email=os.getenv("TJ_CHECKOUT_EMAIL", "livadient@gmail.com"),
+    tj_discount_code=os.getenv("TJ_DISCOUNT_CODE", "OHMANGOESSHOP"),
     omg_shopify_domain=os.getenv("OMG_SHOPIFY_DOMAIN", "52922c-2.myshopify.com"),
     omg_shopify_admin_token=os.getenv("OMG_SHOPIFY_ADMIN_TOKEN", ""),
     omg_shopify_client_id=os.getenv("OMG_SHOPIFY_CLIENT_ID", ""),

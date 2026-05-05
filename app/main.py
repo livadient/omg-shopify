@@ -256,6 +256,10 @@ async def tj_checkout_redirect(token: str):
         for key, param in prefill_map.items()
         if shipping.get(key)
     }
+    # Apply the configured TJ discount code on the checkout query string —
+    # Shopify's checkout reads `discount=CODE` and applies it automatically.
+    if settings.tj_discount_code:
+        checkout_params["discount"] = settings.tj_discount_code
     return_to = "/checkout"
     if checkout_params:
         return_to += "?" + urlencode(checkout_params)
@@ -646,7 +650,7 @@ async def _process_order_background(
         omg_shipping_method = (shipping_lines[0].get("title", "") if shipping_lines else "")
 
         shipping = {
-            "email": settings.email_sender,
+            "email": settings.tj_checkout_email,
             "first_name": shipping_address.get("first_name", ""),
             "last_name": f"{shipping_address.get('last_name', '')} (OMG #{order_number})",
             "address1": shipping_address.get("address1", ""),
@@ -707,6 +711,10 @@ async def _process_order_background(
     order_total = order.get("total_price", "N/A")
     currency = order.get("currency", "EUR")
 
+    # TEST-* webhooks (sent via /test-webhook form or any synthetic
+    # resubmission) only notify settings.test_email_recipient so test
+    # traffic doesn't pile up in everyone's inbox.
+    is_test = str(order_number).upper().startswith("TEST")
     await send_order_notification(
         order_number=order_number,
         customer_name=customer_name,
@@ -714,6 +722,7 @@ async def _process_order_background(
         currency=currency,
         items=items_mapped,
         shipping=shipping,
+        recipients_override=([settings.test_email_recipient] if is_test else None),
     )
 
     logger.info(f"Background processing complete for order #{order_number}")
@@ -847,8 +856,8 @@ async def manual_order_submit(
         item["qstomizer_url"] = f"{QSTOMIZER_URL}?qstomizer-product-id={product_id}"
         items_for_processing.append(item)
 
-    # Add email sender for checkout and OMG order ref to last name
-    shipping["email"] = settings.email_sender
+    # Add buyer-side checkout email and OMG order ref to last name
+    shipping["email"] = settings.tj_checkout_email
     if shipping.get("last_name"):
         shipping["last_name"] = f"{shipping['last_name']} (OMG #{order_number})"
 

@@ -702,7 +702,7 @@ async def _select_shipping_method(page, country_code: str, omg_method: str = "")
                 const text = label.textContent.trim();
                 if (skip.some(s => text.toLowerCase() === s || text.toLowerCase().includes('credit')))
                     continue;
-                methods.push({id: radio.id, text: text, el: radio});
+                methods.push({id: radio.id, text: text, el: radio, kind: 'input'});
             }
 
             // Also check role="radio" elements (newer Shopify checkout)
@@ -712,7 +712,7 @@ async def _select_shipping_method(page, country_code: str, omg_method: str = "")
                 if (skip.some(s => text.toLowerCase() === s)) continue;
                 if (text.includes('Credit') || text.includes('PayPal') || text.includes('Viva')) continue;
                 if (!methods.some(m => m.text === text)) {
-                    methods.push({id: rr.id, text: text, el: rr});
+                    methods.push({id: rr.id, text: text, el: rr, kind: 'role'});
                 }
             }
 
@@ -720,18 +720,44 @@ async def _select_shipping_method(page, country_code: str, omg_method: str = "")
 
             const listing = methods.map(m => m.text.substring(0, 60)).join(' | ');
 
+            // Robust selection: native radios need .checked + change event for
+            // React/Shopify state updates to fire (a plain .click() sometimes
+            // toggles the underlying control without notifying React, which
+            // re-renders and reverts the selection on next paint). For
+            // role=radio elements (Shopify's newer custom checkout), click
+            // + KeyDown(Space) covers both code paths.
+            const selectMethod = (m) => {
+                try {
+                    if (m.kind === 'input') {
+                        // Hit the visible label first — Shopify often hooks
+                        // its handler there rather than on the bare input.
+                        const lbl = document.querySelector('label[for=\"' + m.el.id + '\"]');
+                        if (lbl) lbl.click();
+                        m.el.checked = true;
+                        m.el.dispatchEvent(new Event('change', {bubbles: true}));
+                        m.el.dispatchEvent(new Event('input',  {bubbles: true}));
+                    } else {
+                        m.el.click();
+                        m.el.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true}));
+                    }
+                } catch (e) {
+                    try { m.el.click(); } catch (e2) {}
+                }
+            };
+
             // Try to match preferred method
             if (preferred) {
                 for (const m of methods) {
                     if (m.text.toLowerCase().includes(preferred)) {
-                        m.el.click();
+                        selectMethod(m);
                         return 'selected: ' + m.text.substring(0, 80) + ' [from: ' + listing + ']';
                     }
                 }
+                return 'NO_MATCH for preferred=' + preferred + ' [from: ' + listing + '] — leaving default';
             }
 
-            // Fallback: pick first (usually cheapest)
-            methods[0].el.click();
+            // No preferred specified: pick first (usually cheapest)
+            selectMethod(methods[0]);
             return 'fallback: ' + methods[0].text.substring(0, 80) + ' [from: ' + listing + ']';
         }
     """, preferred)
