@@ -607,9 +607,21 @@ async def _process_order_background(
         #   "Male / Front / L"  (new 3-option schema: Gender / Placement / Size)
         #   "Male / L"          (legacy 2-option schema: Gender / Size)
         #   "L"                 (oldest legacy: Size only)
+        # Shopify sometimes inserts non-breaking spaces (U+00A0) and other
+        # unicode whitespace around the " / " separators, which would make a
+        # naive split silently fall back to the legacy 2-option branch and
+        # default placement to "front" — producing a blank front mockup for
+        # what is actually a back-printed order. Normalize first.
+        normalized_variant = (
+            variant_title.replace("\xa0", " ").replace(" ", " ").strip()
+        )
+        # Collapse any run of whitespace into a single ASCII space.
+        import re as _re
+        normalized_variant = _re.sub(r"\s+", " ", normalized_variant)
+
         placement = "front"
-        if " / " in variant_title:
-            parts = [p.strip() for p in variant_title.split(" / ")]
+        if " / " in normalized_variant:
+            parts = [p.strip() for p in normalized_variant.split(" / ")]
             if len(parts) >= 3:
                 gender_str, placement_str, size = parts[0], parts[1], parts[2]
                 placement = "back" if placement_str.lower() == "back" else "front"
@@ -618,7 +630,12 @@ async def _process_order_background(
             product_type = "female" if "female" in gender_str.lower() else "male"
         else:
             product_type = "female" if "female" in source_handle else "male"
-            size = variant_title
+            size = normalized_variant
+        logger.info(
+            f"  Parsed variant: title={variant_title!r} "
+            f"normalized={normalized_variant!r} → "
+            f"product_type={product_type} placement={placement} size={size}"
+        )
 
         # Extract shipping details from order
         shipping_address = order.get("shipping_address") or {}

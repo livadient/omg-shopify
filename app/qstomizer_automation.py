@@ -492,16 +492,27 @@ async def _customize_and_add_to_cart_impl(
         # Extract Qstomizer mockup image URL (the rendered product preview).
         # For back placement, the design is on the back canvas — front mockup
         # would be an empty tee. Pick the image that actually shows our design.
+        # CRITICAL: when placement=back, NEVER fall back to a front URL —
+        # the front view is blank for back-printed orders, so the email would
+        # display a misleadingly-blank tee. Better to send no preview than
+        # the wrong one (the email template handles missing mockup_url).
         mockup_url = None
         is_back = (placement or "front").lower() == "back"
         for item in cart_data.get("items", []):
             props = item.get("properties", {})
             if is_back:
-                # Back placement: front mockup is empty — use back. No Shopify CDN
-                # mirror exists for the back image, so bigvanet.com is our only option.
-                mockup_url = props.get("_customimageback") or props.get("_customimagefront")
+                # Back placement: ONLY use _customimageback (bigvanet — no
+                # Shopify CDN mirror exists for back). If missing, leave
+                # mockup_url=None and log loud.
+                mockup_url = props.get("_customimageback")
+                if not mockup_url:
+                    print(
+                        f"WARNING: placement=back but _customimageback missing in cart "
+                        f"properties. props_keys={list(props.keys())}. "
+                        f"Email will skip the mockup preview."
+                    )
             else:
-                # Front placement: prefer the Shopify CDN URL (cached, email-friendly)
+                # Front placement: prefer the Shopify CDN URL (cached, email-friendly).
                 mockup_url = props.get("Custom Image:") or props.get("_customimagefront")
             if mockup_url:
                 print(f"Mockup image ({placement or 'front'}): {mockup_url}")
