@@ -524,8 +524,76 @@ async def _customize_and_add_to_cart_impl(
                     except Exception as e:
                         print(f"WARNING: failed to add Back Preview property: {e}")
 
-        checkout_url = _build_checkout_permalink(cart_data, shipping)
-        print(f"Checkout permalink: {checkout_url}")
+        # Build the durable rebuild-cart permalink as a fallback (works
+        # forever — rebuilds the cart from saved properties), but if we
+        # can fill the checkout in the same Playwright session below we
+        # prefer the resulting session checkout URL because it preserves
+        # the selected shipping method, address, email, and discount —
+        # things URL-pre-fill in modern Shopify checkout doesn't honour.
+        rebuild_url = _build_checkout_permalink(cart_data, shipping)
+        print(f"Rebuild-cart permalink (fallback): {rebuild_url}")
+        checkout_url = rebuild_url
+
+        # Pre-fill the actual TJ checkout in this Playwright session and
+        # capture the resulting `/checkouts/cn/SESSIONHASH/...` URL —
+        # any browser opening that URL within the session lifetime
+        # (~24h) sees the cart, address, shipping selection, discount,
+        # and email already in place. This restores the behaviour from
+        # before commit 7c5119b (Apr 13) which the cart-permalink
+        # refactor accidentally removed.
+        if shipping:
+            try:
+                print("Filling TJ checkout in-session for full pre-fill...")
+                if "/cart" in page.url and "/checkout" not in page.url:
+                    await page.goto(
+                        "https://tshirtjunkies.co/checkout",
+                        wait_until="domcontentloaded", timeout=60000,
+                    )
+                    await page.wait_for_timeout(3000)
+                # Confirm the email field rendered before filling
+                await page.wait_for_selector("input[name='email']", timeout=15000)
+                await _fill_checkout(page, shipping)
+                # Apply the configured TJ discount in-session too — paste
+                # it into the discount-code input and click Apply so the
+                # session has it baked in (URL ?discount= is also passed
+                # but newer checkout sometimes ignores it).
+                from app.config import settings as _cfg
+                discount = (_cfg.tj_discount_code or "").strip()
+                if discount:
+                    try:
+                        applied = await page.evaluate("""
+                            (code) => {
+                                const inputs = document.querySelectorAll(
+                                    'input[name=\"reductions\"], input[name=\"discount\"], '
+                                    + 'input[autocomplete=\"discount-code\"]'
+                                );
+                                if (inputs.length === 0) return 'no_discount_input';
+                                const input = inputs[0];
+                                const setter = Object.getOwnPropertyDescriptor(
+                                    window.HTMLInputElement.prototype, 'value'
+                                ).set;
+                                setter.call(input, code);
+                                input.dispatchEvent(new Event('input',  {bubbles: true}));
+                                input.dispatchEvent(new Event('change', {bubbles: true}));
+                                // Click the sibling Apply button
+                                const btn = input.closest('form')?.querySelector('button')
+                                         ?? document.querySelector('button[type=\"submit\"]');
+                                if (btn) btn.click();
+                                return 'applied: ' + code;
+                            }
+                        """, discount)
+                        print(f"  Discount: {applied}")
+                    except Exception as e:
+                        print(f"  Discount: failed ({e})")
+                # Capture the session checkout URL — this is what we want
+                # to email so the user lands on a fully-prefilled checkout.
+                await page.wait_for_timeout(1500)
+                checkout_url = page.url
+                print(f"Session checkout URL: {checkout_url}")
+            except Exception as e:
+                print(f"WARNING: in-session checkout fill failed ({e}); "
+                      f"falling back to rebuild-cart permalink: {rebuild_url}")
+                checkout_url = rebuild_url
 
         # Extract Qstomizer mockup image URL (the rendered product preview).
         # For back placement, the design is on the back canvas — front mockup
