@@ -1,5 +1,6 @@
 """Automate Qstomizer: upload design image, select size, and add to cart."""
 import asyncio
+import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -486,6 +487,36 @@ async def _customize_and_add_to_cart_impl(
         # Fetch cart contents to get Qstomizer properties
         print("Building shareable checkout link...")
         cart_data = await page.evaluate("fetch('/cart.js').then(r => r.json())")
+
+        # When placement=back, Qstomizer still defaults the visible
+        # `Custom Image:` line-item property to the FRONT view, so TJ's
+        # cart page renders a blank tee thumbnail. Swap it to
+        # `_customimageback` so the cart UI matches what's actually
+        # being printed. Done via /cart/change.js, which preserves all
+        # other properties when only `properties` is sent.
+        if (placement or "front").lower() == "back":
+            for item_idx, item in enumerate(cart_data.get("items", []), start=1):
+                props = item.get("properties") or {}
+                back_url = props.get("_customimageback")
+                if back_url and props.get("Custom Image:") != back_url:
+                    new_props = {**props, "Custom Image:": back_url}
+                    js = (
+                        "fetch('/cart/change.js', {method: 'POST',"
+                        "headers: {'Content-Type': 'application/json'},"
+                        f"body: JSON.stringify({{line: {item_idx},"
+                        f"properties: {json.dumps(new_props)}}})}})"
+                        ".then(r => r.json())"
+                    )
+                    try:
+                        updated = await page.evaluate(js)
+                        cart_data = updated
+                        print(
+                            f"Patched line {item_idx} `Custom Image:` to back URL "
+                            f"so cart UI shows the printed side."
+                        )
+                    except Exception as e:
+                        print(f"WARNING: failed to patch Custom Image for back placement: {e}")
+
         checkout_url = _build_checkout_permalink(cart_data, shipping)
         print(f"Checkout permalink: {checkout_url}")
 
