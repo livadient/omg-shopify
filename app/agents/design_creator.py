@@ -260,7 +260,21 @@ CONCEPT_TYPES_CORE = """1. **Cyprus/Local Design** — A design that celebrates 
 2. **Global Trend Design** — A design based on whatever is trending RIGHT NOW worldwide. This should have absolutely nothing to do with Cyprus, the Mediterranean, or any specific country. Pure global internet culture, viral moments, or worldwide pop culture trends that would sell anywhere on the planet.
 3. **Slogan/Quote** — A bold typographic design where the text IS the design. LEAN HUMOROUS most of the time — punchy one-liners, witty observations, deadpan or sarcastic takes, absurd statements, dark humor, self-deprecating jokes. The kind of slogan someone would actually screenshot and send to a friend. Occasionally (maybe 1 in 4 runs) do a clever motivational/inspirational one for variety. Avoid generic "live laugh love" energy. NOT Cyprus-related.
 4. **Funny Design** — A humorous illustration that makes people laugh or smile. Visual comedy, absurd situations, clever visual puns, meme-inspired (but original) artwork. NOT Cyprus-related.
-5. **Geeky/Nerd Design** — Something for tech lovers, gamers, science nerds, programmers, anime fans, or sci-fi enthusiasts. Clever references, pixel art, code jokes, retro gaming, science humor, or fantasy/D&D themes. Must be original (no copyrighted characters). NOT Cyprus-related."""
+5. **Geeky/Nerd Design** — Something for tech lovers, gamers, science nerds, programmers, anime fans, or sci-fi enthusiasts. Clever references, pixel art, code jokes, retro gaming, science humor, or fantasy/D&D themes. Must be original (no copyrighted characters). NOT Cyprus-related.
+
+   **AVOID FAUX-UI MOCKUPS.** Recent geeky concepts have been stuck in a loop of "screenshot of a UI on a tee" — loading bars, error dialogs, terminal windows, syntax-highlighted code blocks, smartphone notification overlays, retro OS interfaces, "404 not found", "Error 418", progress meters. DALL-E renders these literally as UI screenshots and the result is just text-heavy noise. They are now BANNED unless you have a genuinely fresh angle that hasn't been done.
+
+   Pull from these *illustration*-led directions instead:
+   - Character/creature: cyberpunk silhouettes, retro robots, alien archetypes, original mascots, sci-fi creatures, anime-influenced original characters
+   - Astronomy/cosmos: nebulae, galaxies, planets, constellations, retro NASA-style postage stamps, lunar phases as art
+   - Science as art: atoms / DNA helices / chemistry glassware / circuit boards rendered as decorative line art, NOT as text-heavy diagrams
+   - Tabletop/D&D: dice, wizard/warrior archetypes, dragons, runes, RPG class crests, lich-king vibes
+   - Retro tech as aesthetic: vintage cassette tapes, floppy disks, CRT-glow gradients, vaporwave color palettes — used as visual texture, not as a literal UI
+   - Pixel-art creatures: 8-bit monsters, retro game sprites, pixelated landscapes
+   - Gaming hardware as illustration: stylised game controllers, dice, headphones, mech-keyboard cross-sections
+   - Niche subculture insider art: chess piece composition, climbing route diagrams, F1 engine cutaways, vinyl record stylisation
+
+   The test: if a designer hand-draws this with a pencil, does it look like a UI screenshot? If yes, scrap it."""
 
 CONCEPT_TYPE_SUMMER = """6. **Summer/Vacation Vibes** — A bright, optimistic summer-energy design. Think palm trees, sunsets, ocean waves, beach cocktails, retro postcards, surf culture, sun rays, swimming, ice cream, flip-flops, "summer mode", sunscreen jokes, beach reading, vacation vibes. Bold saturated colors that scream warm weather. Should appeal to anyone planning a holiday or wishing they were on one. Can be Mediterranean-flavored (it's our home turf) or universal beach/summer vibes — your choice. Keep it fun, not generic stock-art."""
 
@@ -282,6 +296,7 @@ OUTPUT_SCHEMA = """Output as JSON:
       "suggested_title": "Product title for the store",
       "suggested_tags": "comma,separated,tags (include 'summer' for summer-type, 'feminine' for feminine-type, 'cyprus,tourist,souvenir' for love-cyprus type)",
       "tee_color": "White|Black|Navy Blue|Red|Royal Blue|Sport Grey",
+      "text_layout": "hierarchy|stacked|inverted|single|stagger",
       "reasoning": "Why this design would sell well right now"
     }
   ]
@@ -300,13 +315,21 @@ NAMING RULES (strict):
 - `text_on_shirt`: keep it SHORT (1–6 words max if you want DALL-E to spell it right).
   Long phrases consistently come back misspelled — prefer slogan-type for anything 7+ words
   so we render with Pillow instead. For SLOGAN-type designs, split the slogan across
-  two lines using a literal `\n` when there's a natural punchline break (top line = the
-  setup/statement, bottom line = the kicker/punchline). The Pillow renderer applies a
-  size+weight hierarchy: top line in bold condensed caps, bottom line noticeably smaller
-  and thinner in a regular-weight sans. This matches the approved "Don't Tempt Me /
-  I'll Say Yes" template — modest chest-pocket scale (~55% canvas width), not billboard.
-  Example good shapes: `"DON'T TEMPT ME\nI'LL SAY YES"`, `"TOLD HER SHE'S THE ONE\nNOT THE ONLY ONE"`.
-  Single-line slogans render at the same modest scale without hierarchy.
+  multiple lines using literal `\n` to mark the line breaks. Pair the line break with a
+  `text_layout` choice (see below) — DON'T always use `hierarchy`, vary the pattern so
+  successive slogan tees don't all read as "big top + small sub".
+  Example good shapes: `"DON'T TEMPT ME\nI'LL SAY YES"` (hierarchy), `"NORMAL\nPEOPLE\nSCARE\nME"`
+  (stacked), `"PROBABLY\nTHINKING\nABOUT\nSNACKS"` (stagger), `"PROFESSIONAL\nOVERTHINKER"` (inverted).
+- `text_layout`: how the Pillow renderer arranges line sizes. Required for slogan-type
+  designs. Pick the layout that fits the slogan's natural reading rhythm:
+  * `hierarchy` — line 1 huge, the rest at 45% (classic setup → small kicker, e.g. DON'T TEMPT ME / I'LL SAY YES). Don't default to this every time.
+  * `stacked` — every line at the same big size (works for short punchy multi-word stacks like NORMAL / PEOPLE / SCARE / ME, or single-word emphasis).
+  * `inverted` — small intro on top, BIG punchline on the last line (small setup → loud reveal).
+  * `single` — collapse newlines into ONE big line (use for slogans where the rhythm is in the words, not the layout).
+  * `stagger` — middle line is huge, top and bottom small (works for 3-line slogans where the middle word is the emphasis).
+  Vary your choice across the 5 concepts in a run — at most 2 of any single layout per run.
+  All layouts now render at ~70% canvas width (bigger than before) so the print reads
+  bold from across the room.
 - `tee_color`: the fabric color the design is PRINTED ON. Must be exactly one of
   `White`, `Black`, `Navy Blue`, `Red`, `Royal Blue`, `Sport Grey` — any other value
   is rejected. Pick for legibility:
@@ -693,6 +716,7 @@ Be specific in the design description so an AI image generator can create it acc
                 image_path = await generate_text_design(
                     text=concept["text_on_shirt"],
                     style=concept.get("style", "bold modern"),
+                    layout=concept.get("text_layout", "hierarchy"),
                 )
             else:
                 image_path = await generate_design_with_text_check(

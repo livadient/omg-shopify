@@ -152,26 +152,69 @@ async def generate_design(
     return filepath
 
 
+TEXT_DESIGN_LAYOUTS = ("hierarchy", "stacked", "single", "inverted", "stagger")
+
+
+def _layout_line_scales(layout: str, n_lines: int) -> list[float]:
+    """Return per-line size factors (relative to the largest line = 1.0).
+
+    Each layout shapes the slogan differently so successive slogan tees
+    don't all look like big-top + small-sub:
+
+    - hierarchy: lines[0] = 1.0, the rest = 0.45 (Don't Tempt Me style)
+    - stacked:   every line = 0.95 (Normal People Scare Me style)
+    - inverted:  lines[0] = 0.45, last = 1.0, mid = 0.45 (small setup → BIG punchline)
+    - single:    only lines[0] = 1.0; extra lines collapsed onto one line via space-join
+    - stagger:   line in the middle = 1.0, others = 0.55 (visual emphasis dead-centre)
+
+    For a single-line slogan every layout collapses to one big line.
+    """
+    if n_lines == 1:
+        return [1.0]
+    if layout == "stacked":
+        return [0.95] * n_lines
+    if layout == "inverted":
+        scales = [0.45] * n_lines
+        scales[-1] = 1.0
+        return scales
+    if layout == "single":
+        # Caller is expected to pre-flatten lines for "single", but fall
+        # back to scaling the first line large if multi-line slipped through.
+        return [1.0] + [0.0] * (n_lines - 1)
+    if layout == "stagger":
+        scales = [0.55] * n_lines
+        scales[n_lines // 2] = 1.0
+        return scales
+    # default: hierarchy
+    return [1.0] + [0.45] * (n_lines - 1)
+
+
 async def generate_text_design(
     text: str,
     style: str = "bold modern",
     size: tuple[int, int] = (1024, 1024),
+    layout: str = "hierarchy",
 ) -> Path:
     """Generate a text-only design using Pillow typography.
 
-    Follows the Kyriaki-approved "Don't Tempt Me" template (2026-04-22):
-    modest print scale (~55% of canvas width, generous fabric around all
-    sides), and for two-line slogans a visible size+weight hierarchy —
-    bold condensed caps on top + noticeably smaller thinner regular-weight
-    sub line. Single-line slogans render at the same modest scale.
+    `layout` selects the size pattern across lines (see
+    _layout_line_scales). Default 'hierarchy' matches the Kyriaki-approved
+    Don't Tempt Me template; other values give Mango variety so slogan
+    tees don't all read as big-top + small-sub.
 
-    Picks a random color, hierarchy font pair, treatment (plain/outline/
-    shadow) and case on each call so successive slogan tees feel visually
-    distinct instead of all being identical.
+    Picks a random color, font pair, treatment (plain/outline/shadow)
+    and case on each call so successive slogan tees feel visually
+    distinct beyond just the layout choice.
+
+    Print scale is generous (~70% of canvas width) — Vangelis flagged
+    on 2026-05-05 that the previous 55% was too small.
 
     Returns the path to the saved PNG file.
     """
     from PIL import Image, ImageDraw, ImageFont
+    if layout not in TEXT_DESIGN_LAYOUTS:
+        logger.warning(f"Unknown layout {layout!r}, falling back to 'hierarchy'")
+        layout = "hierarchy"
 
     # Randomized look — color, font pair, treatment, case
     color_hex = random.choice(TEXT_DESIGN_COLORS)
@@ -205,66 +248,71 @@ async def generate_text_design(
     img = Image.new("RGBA", size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # Respect explicit newlines; no auto-wrap for long single lines — the
-    # LLM is instructed to put the hierarchy break in the text, and an
-    # auto-wrap mid-line would flatten the top/sub distinction.
     raw = text.upper() if use_uppercase else text
     lines = raw.split("\n")
+    if layout == "single":
+        # Collapse any newlines into a single line so it renders as one mega line.
+        lines = [" ".join(l.strip() for l in lines if l.strip())]
+    # Drop empty lines that would otherwise force odd vertical spacing.
+    lines = [l for l in lines if l.strip()] or [raw or " "]
 
-    # Modest print scale — text fills ~55% of the canvas width, leaving
-    # generous fabric margin on all sides. This matches Kyriaki's
-    # "small modest caption" feedback and keeps the print chest-pocket-
-    # sized rather than billboard-sized.
-    text_width_ratio = 0.55
+    scales = _layout_line_scales(layout, len(lines))
+    # Wider print — bumped from 0.55 → 0.70 on 2026-05-05 per Vangelis.
+    text_width_ratio = 0.70
     max_text_w = int(size[0] * text_width_ratio)
-    max_text_h = int(size[1] * 0.70)
+    max_text_h = int(size[1] * 0.78)
 
-    # Sub line should read as noticeably smaller AND thinner than top.
-    # 0.45 is the ratio Kyriaki approved on the DTM style (top=Impact,
-    # sub=Arial Regular at 45%).
-    sub_to_top_ratio = 0.45
+    logger.info(
+        f"Text design layout={layout} scales={scales} "
+        f"width_ratio={text_width_ratio} treatment={treatment} "
+        f"upper={use_uppercase} top_font="
+        f"{Path(top_font_path).name if top_font_path else 'default'}"
+    )
 
     def _load(fp: str | None, sz: int):
         if not fp:
             return ImageFont.load_default()
         return ImageFont.truetype(fp, sz)
 
-    # Find the largest top-line font size that fits within max_text_w /
-    # max_text_h when combined with sub (if present).
-    top_size = 400
-    top_font = sub_font = None
-    top_bb = sub_bb = None
-    tot_h = 0
-    while top_size > 20:
-        top_font = _load(top_font_path, top_size)
-        top_bb = draw.textbbox((0, 0), lines[0], font=top_font)
-        top_w = top_bb[2] - top_bb[0]
-        top_h = top_bb[3] - top_bb[1]
+    # Pick a per-line font: lines with scale==1.0 use the bold/condensed top
+    # font, smaller scaled lines use the regular sub font for visible weight
+    # contrast on hierarchy/inverted/stagger layouts.
+    def _font_for(scale: float, base_size: int):
+        size_px = max(1, int(base_size * scale))
+        path = top_font_path if scale >= 0.95 else sub_font_path
+        return _load(path, size_px), size_px
 
-        if len(lines) > 1:
-            sub_size = max(1, int(top_size * sub_to_top_ratio))
-            sub_font = _load(sub_font_path, sub_size)
-            sub_bb = draw.textbbox((0, 0), lines[1], font=sub_font)
-            sub_w = sub_bb[2] - sub_bb[0]
-            sub_h = sub_bb[3] - sub_bb[1]
-            gap = int(top_size * 0.18)
-            tot_h = top_h + gap + sub_h
-            if max(top_w, sub_w) <= max_text_w and tot_h <= max_text_h:
-                break
-        else:
-            sub_font = None
-            tot_h = top_h
-            if top_w <= max_text_w and top_h <= max_text_h:
-                break
-        top_size -= 6
+    # Find the largest base size that fits the widest line + total height.
+    base_size = 480
+    fitted_lines: list[tuple[str, "ImageFont.FreeTypeFont", tuple[int, int, int, int]]] = []
+    while base_size > 20:
+        fitted_lines.clear()
+        max_w = 0
+        tot_h = 0
+        gap_estimate = int(base_size * 0.16)
+        for line, scale in zip(lines, scales):
+            if scale <= 0.0:
+                continue
+            font, _ = _font_for(scale, base_size)
+            bb = draw.textbbox((0, 0), line, font=font)
+            w = bb[2] - bb[0]
+            h = bb[3] - bb[1]
+            max_w = max(max_w, w)
+            tot_h += h
+            fitted_lines.append((line, font, bb))
+        if fitted_lines:
+            tot_h += gap_estimate * (len(fitted_lines) - 1)
+        if max_w <= max_text_w and tot_h <= max_text_h:
+            break
+        base_size -= 8
 
-    def _draw_line(line: str, font, x: int, y: int):
+    def _draw_line(line: str, font, x: int, y: int, line_size: int):
         if treatment == "shadow":
-            offset = max(4, top_size // 30)
+            offset = max(4, line_size // 30)
             draw.text((x + offset, y + offset), line, fill=(0, 0, 0, 110), font=font)
             draw.text((x, y), line, fill=color_hex, font=font)
         elif treatment == "outline":
-            stroke_w = max(2, top_size // 40)
+            stroke_w = max(2, line_size // 40)
             draw.text(
                 (x, y), line, fill=color_hex, font=font,
                 stroke_width=stroke_w, stroke_fill="black",
@@ -272,35 +320,23 @@ async def generate_text_design(
         else:
             draw.text((x, y), line, fill=color_hex, font=font)
 
+    # Render fitted lines centered horizontally, stacked vertically.
     cx = size[0] / 2
-    y_start = (size[1] - tot_h) / 2
-    top_w = top_bb[2] - top_bb[0]
-    top_h = top_bb[3] - top_bb[1]
-    _draw_line(
-        lines[0], top_font,
-        int(cx - top_w / 2 - top_bb[0]),
-        int(y_start - top_bb[1]),
-    )
-    if len(lines) > 1 and sub_font and sub_bb:
-        gap = int(top_size * 0.18)
-        sub_w = sub_bb[2] - sub_bb[0]
+    gap = int(base_size * 0.16)
+    total_height = sum((bb[3] - bb[1]) for _, _, bb in fitted_lines)
+    total_height += gap * max(0, len(fitted_lines) - 1)
+    y_cursor = (size[1] - total_height) / 2
+    for line, font, bb in fitted_lines:
+        line_w = bb[2] - bb[0]
+        line_h = bb[3] - bb[1]
+        line_size = font.size if hasattr(font, "size") else base_size
         _draw_line(
-            lines[1], sub_font,
-            int(cx - sub_w / 2 - sub_bb[0]),
-            int(y_start + top_h + gap - sub_bb[1]),
+            line, font,
+            int(cx - line_w / 2 - bb[0]),
+            int(y_cursor - bb[1]),
+            line_size,
         )
-        # If there are more than 2 lines, treat the rest as extra sub
-        # lines at the same sub size — stacked below.
-        extra_y = y_start + top_h + gap - sub_bb[1] + (sub_bb[3] - sub_bb[1]) + gap
-        for extra_line in lines[2:]:
-            extra_bb = draw.textbbox((0, 0), extra_line, font=sub_font)
-            extra_w = extra_bb[2] - extra_bb[0]
-            _draw_line(
-                extra_line, sub_font,
-                int(cx - extra_w / 2 - extra_bb[0]),
-                int(extra_y - extra_bb[1]),
-            )
-            extra_y += (extra_bb[3] - extra_bb[1]) + gap
+        y_cursor += line_h + gap
 
     # Save
     proposals_dir = STATIC_DIR / "proposals"
