@@ -63,9 +63,47 @@ async def _fetch_products() -> list[dict]:
 
 
 async def _fetch_existing_articles() -> list[dict]:
-    """Fetch existing blog articles to avoid duplication."""
+    """Fetch existing blog articles to avoid duplication.
+
+    Pulls up to 250 (Shopify's per-page max) so Olive sees the full
+    history; with the previous default of 50 the oldest posts fell out
+    of her context and she'd unknowingly propose duplicates.
+    """
     from app.shopify_blog import list_articles
-    return await list_articles()
+    return await list_articles(limit=250)
+
+
+def _normalise_title(t: str) -> str:
+    """Lower-case + strip punctuation/stop-words for fuzzy title compare."""
+    import re
+    stop = {
+        "a", "an", "the", "and", "or", "of", "to", "in", "on", "for",
+        "with", "from", "by", "your", "you", "we", "our", "is", "are",
+        "be", "as", "at", "how", "why", "what", "this", "that",
+    }
+    tokens = re.findall(r"[a-z0-9]+", (t or "").lower())
+    return " ".join(t for t in tokens if t not in stop)
+
+
+def _too_similar_to_existing(
+    candidate_title: str, existing_titles: list[str], threshold: float = 0.7,
+) -> tuple[bool, str | None]:
+    """Return (True, matched_title) if candidate's normalised tokens
+    overlap any existing post by ≥threshold. Catches reskins like
+    'Summer Cyprus Style' vs 'Cyprus Summer Style Guide' that drift
+    past Claude's "do not overlap" instruction.
+    """
+    cand = set(_normalise_title(candidate_title).split())
+    if not cand:
+        return False, None
+    for existing in existing_titles:
+        ex = set(_normalise_title(existing).split())
+        if not ex:
+            continue
+        overlap = len(cand & ex) / max(len(cand), len(ex))
+        if overlap >= threshold:
+            return True, existing
+    return False, None
 
 
 async def generate_proposal() -> dict:
@@ -139,6 +177,52 @@ In the `topic_angle` field, briefly explain how this post is distinct from the c
         max_tokens=4096,
         temperature=0.8,
     )
+
+    # Programmatic guard against re-proposing an already-published post.
+    # Up to 2 retries: each retry is told the offending title plus a
+    # tightened "must not duplicate" instruction. If still too close on
+    # the third attempt, ship anyway with a flag in topic_angle so we
+    # can spot the regression in the email.
+    existing_titles = [a.get("title", "") for a in articles if a.get("title")]
+    for retry in range(2):
+        match_hit, matched = _too_similar_to_existing(
+            blog_data.get("title", ""), existing_titles,
+        )
+        if not match_hit:
+            break
+        logger.warning(
+            f"Olive proposed '{blog_data.get('title')}' which duplicates "
+            f"existing post '{matched}'. Re-prompting (attempt {retry + 2}/3)..."
+        )
+        retry_prompt = user_prompt + (
+            f"\n\nIMPORTANT: your previous attempt proposed "
+            f"'{blog_data.get('title')}', which OVERLAPS too closely with "
+            f"the already-published '{matched}'. Pick a completely "
+            f"different topic cluster — different keywords, different "
+            f"angle, different headline structure. Do NOT propose any "
+            f"variation of the existing titles listed above."
+        )
+        blog_data = await llm_client.generate_json(
+            system_prompt=SYSTEM_PROMPT,
+            user_prompt=retry_prompt,
+            max_tokens=4096,
+            temperature=0.9,
+        )
+    else:
+        # Loop finished without `break` — last attempt still duplicate.
+        last_match_hit, last_matched = _too_similar_to_existing(
+            blog_data.get("title", ""), existing_titles,
+        )
+        if last_match_hit:
+            existing_angle = blog_data.get("topic_angle", "")
+            blog_data["topic_angle"] = (
+                f"⚠ DUPLICATE WARN: still overlaps with '{last_matched}'. "
+                f"{existing_angle}"
+            )
+            logger.error(
+                f"Olive: 3 attempts all duplicated existing posts. "
+                f"Last title='{blog_data.get('title')}' vs '{last_matched}'."
+            )
 
     # Create proposal
     proposal = create_proposal("blog", blog_data)
