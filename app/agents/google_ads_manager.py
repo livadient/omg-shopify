@@ -2,7 +2,9 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from app.agents.google_ads_token import get_refresh_token
+from app.agents.google_ads_token import (
+    capture_rotated_token, get_refresh_token,
+)
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -300,10 +302,18 @@ def fetch_campaign_performance(days: int = 1) -> list[dict] | None:
             })
 
         logger.info(f"Fetched performance for {len(campaigns)} Atlas campaigns")
+        capture_rotated_token(client)
         return campaigns
 
     except Exception as e:
+        capture_rotated_token(client)
         logger.error(f"Failed to fetch campaign performance: {e}")
+        try:
+            from google.auth.exceptions import RefreshError
+            if isinstance(e, RefreshError):
+                raise
+        except ImportError:
+            pass
         return None
 
 
@@ -350,8 +360,16 @@ def fetch_keyword_performance(campaign_id: str, days: int = 7) -> list[dict] | N
                 "cost_eur": round(row.metrics.cost_micros / 1_000_000, 2),
                 "conversions": round(row.metrics.conversions, 1),
             })
+        capture_rotated_token(client)
         return keywords
 
     except Exception as e:
+        capture_rotated_token(client)
         logger.error(f"Failed to fetch keyword performance: {e}")
+        try:
+            from google.auth.exceptions import RefreshError
+            if isinstance(e, RefreshError):
+                raise
+        except ImportError:
+            pass
         return None

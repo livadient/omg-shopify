@@ -1,7 +1,9 @@
 """Fetch real keyword data from Google Ads Keyword Planner."""
 import logging
 
-from app.agents.google_ads_token import get_refresh_token
+from app.agents.google_ads_token import (
+    capture_rotated_token, get_refresh_token,
+)
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -119,10 +121,26 @@ def fetch_keyword_ideas(
         results = results[:max_results]
 
         logger.info(f"Keyword Planner: fetched {len(results)} keyword ideas for {market_code}")
+        # Persist any rotated refresh_token so the chain stays alive
+        # past the 7-day Testing-mode expiry window.
+        capture_rotated_token(client)
         return results
 
     except Exception as e:
+        # Even when the API call itself fails partway through, the
+        # access-token refresh that happened first may have rotated
+        # the refresh_token — capture before bailing out.
+        capture_rotated_token(client)
         logger.error(f"Google Ads Keyword Planner error: {e}")
+        # Bubble RefreshError up so Atlas can render the dedicated
+        # "click here to re-authorize" recovery email instead of the
+        # generic stack-trace one.
+        try:
+            from google.auth.exceptions import RefreshError
+            if isinstance(e, RefreshError):
+                raise
+        except ImportError:
+            pass
         return None
 
 
@@ -184,8 +202,16 @@ def fetch_historical_metrics(
         logger.info(
             f"Historical metrics: resolved {len(results)}/{len(terms[:50])} terms for {market_code}"
         )
+        capture_rotated_token(client)
         return results
 
     except Exception as e:
+        capture_rotated_token(client)
         logger.error(f"Google Ads historical metrics error: {e}")
+        try:
+            from google.auth.exceptions import RefreshError
+            if isinstance(e, RefreshError):
+                raise
+        except ImportError:
+            pass
         return None

@@ -323,9 +323,66 @@ async def generate_daily_report(market_override: str | None = None) -> dict:
         return await _generate_daily_report_impl(market_override)
     except Exception as e:
         logger.exception("Ranking Advisor failed")
-        from app.agents.agent_email import send_error_email
-        await send_error_email("Atlas", e, f"market={market_override}")
+        # Recognise the Google Ads refresh-token failure specifically and
+        # send the self-serve "click here to re-authorize" email instead
+        # of the generic stack-trace one.
+        try:
+            from google.auth.exceptions import RefreshError
+            is_refresh_error = isinstance(e, RefreshError)
+        except ImportError:
+            is_refresh_error = False
+        if is_refresh_error:
+            await _send_token_expired_email(e, market_override)
+        else:
+            from app.agents.agent_email import send_error_email
+            await send_error_email("Atlas", e, f"market={market_override}")
         raise
+
+
+async def _send_token_expired_email(error: Exception, market_override: str | None) -> None:
+    """Send the dedicated 'Google Ads refresh token expired' email with a
+    one-click link to /google-ads/refresh-flow.
+
+    Auto-rotation in google_ads_token.capture_rotated_token() should keep
+    this from firing as long as Atlas runs at least once a week and the
+    token hasn't been manually revoked. When it does fire, the recovery
+    is a 30-second click-through, not a stack trace.
+    """
+    from app.agents.agent_email import send_agent_email
+    from app.config import settings as _cfg
+    refresh_url = f"{_cfg.server_base_url}/google-ads/refresh-flow"
+    html = f"""
+    <div style="font-family:sans-serif;max-width:650px;margin:0 auto;">
+        <div style="background:#f59e0b;color:white;padding:20px;border-radius:8px 8px 0 0;">
+            <h2 style="margin:0;">Atlas needs a quick re-auth</h2>
+            <p style="margin:4px 0 0;opacity:0.9;">Google Ads revoked the refresh token. 30-second fix.</p>
+        </div>
+        <div style="padding:20px;border:1px solid #e5e7eb;">
+            <p>Today's run hit a <code>RefreshError</code> — the OAuth refresh token Google issued has been
+               expired or revoked. This happens when:</p>
+            <ul style="color:#6b7280;font-size:14px;">
+                <li>The OAuth consent app is in Testing mode (still our case) and the chain wasn't refreshed for &gt; 7 days.</li>
+                <li>You manually revoked access on <a href="https://myaccount.google.com/permissions">myaccount.google.com</a>.</li>
+            </ul>
+            <p>Click the button below to re-authorise. You'll see a Google consent screen, click through,
+               then paste the redirect URL into the form on the page. Token saves automatically and Atlas's
+               next scheduled run will pick it up.</p>
+            <p style="text-align:center;margin:24px 0;">
+                <a href="{refresh_url}" style="display:inline-block;padding:12px 32px;background:#f59e0b;color:white;text-decoration:none;border-radius:6px;font-weight:bold;">
+                    Refresh Google Ads token →
+                </a>
+            </p>
+            <p style="color:#9ca3af;font-size:12px;">
+                Context: market={market_override or 'all'}<br>
+                Underlying error: <code>{type(error).__name__}: {error}</code>
+            </p>
+        </div>
+    </div>
+    """
+    await send_agent_email(
+        subject="[Atlas] Re-auth needed — Google Ads refresh token expired",
+        html_body=html,
+    )
 
 
 async def _generate_daily_report_impl(market_override: str | None = None) -> dict:
