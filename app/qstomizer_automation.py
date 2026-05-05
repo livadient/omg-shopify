@@ -488,18 +488,25 @@ async def _customize_and_add_to_cart_impl(
         print("Building shareable checkout link...")
         cart_data = await page.evaluate("fetch('/cart.js').then(r => r.json())")
 
-        # When placement=back, Qstomizer still defaults the visible
-        # `Custom Image:` line-item property to the FRONT view, so TJ's
-        # cart page renders a blank tee thumbnail. Swap it to
-        # `_customimageback` so the cart UI matches what's actually
-        # being printed. Done via /cart/change.js, which preserves all
-        # other properties when only `properties` is sent.
+        # When placement=back, leave Qstomizer's `Custom Image:` (Shopify
+        # CDN front URL) alone — TJ's cart theme only renders inline-image
+        # previews for Shopify CDN URLs, and the front mirror is the only
+        # one Qstomizer auto-mirrors. Swapping it to a bigvanet back URL
+        # would make the cart page lose its inline thumbnail (renders as
+        # plain text instead). Instead, add a NEW visible property
+        # `Back Preview:` pointing to the bigvanet back URL so the cart
+        # page shows: a) the existing inline (blank-front) thumbnail from
+        # `Custom Image:`, b) a separate clickable text URL to the actual
+        # back-side mockup. Best of both — preserves the familiar cart UI
+        # and exposes the back design at a glance. The print itself is
+        # driven by _customorderid, which Qstomizer already bound to the
+        # back-side render.
         if (placement or "front").lower() == "back":
             for item_idx, item in enumerate(cart_data.get("items", []), start=1):
                 props = item.get("properties") or {}
                 back_url = props.get("_customimageback")
-                if back_url and props.get("Custom Image:") != back_url:
-                    new_props = {**props, "Custom Image:": back_url}
+                if back_url and props.get("Back Preview:") != back_url:
+                    new_props = {**props, "Back Preview:": back_url}
                     js = (
                         "fetch('/cart/change.js', {method: 'POST',"
                         "headers: {'Content-Type': 'application/json'},"
@@ -511,11 +518,11 @@ async def _customize_and_add_to_cart_impl(
                         updated = await page.evaluate(js)
                         cart_data = updated
                         print(
-                            f"Patched line {item_idx} `Custom Image:` to back URL "
-                            f"so cart UI shows the printed side."
+                            f"Added line {item_idx} `Back Preview:` property pointing "
+                            f"to the back-side bigvanet URL."
                         )
                     except Exception as e:
-                        print(f"WARNING: failed to patch Custom Image for back placement: {e}")
+                        print(f"WARNING: failed to add Back Preview property: {e}")
 
         checkout_url = _build_checkout_permalink(cart_data, shipping)
         print(f"Checkout permalink: {checkout_url}")
