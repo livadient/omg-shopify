@@ -239,6 +239,34 @@ async def _generate_marketing_scenes(
         design_path=design_path, out_dir=scene_dir, tee_color=tee_color,
     )
     logger.info(f"Composed {len(generated)}/{len(PRINT_GEOMETRY)} marketing scenes for {handle}")
+
+    # Also run the gpt-image-2 proportional-print pipeline (Eurovision-style)
+    # for every approved tee. The 8 photoreal model scenes (man+woman ×
+    # close+full × front+back) supplement compose_marketing_scenes' 6
+    # paste-pipeline scenes — together the gallery has 14 assets per
+    # product. Anchor: this design's own 04_hanger_back.png so the print
+    # stays proportional. Skipped silently if the hanger photo isn't
+    # available (compose_marketing_scenes failed for that scene).
+    try:
+        from app.agents.eurovision_scenes import generate_proportional_scenes
+        anchor = scene_dir / "04_hanger_back.png"
+        ev_scenes = await generate_proportional_scenes(
+            design_path=design_path,
+            anchor_path=anchor if anchor.exists() else None,
+            out_dir=scene_dir,
+            slug=slug,
+        )
+        logger.info(
+            f"Generated {len(ev_scenes)}/8 proportional model scenes for {handle}"
+        )
+        for label, path in ev_scenes.items():
+            generated[label] = path
+    except Exception as e:
+        logger.exception(
+            f"Proportional model scenes failed for {handle} ({e}); "
+            f"keeping {len(generated)} compose scenes only."
+        )
+
     return generated
 
 SYSTEM_PROMPT_BASE = """You are a creative director and trend researcher for OMG (omg.com.cy), an online t-shirt brand. Your target market is ages 16-45 globally.
@@ -1048,6 +1076,20 @@ async def execute_approval(proposal_id: str, version: str = "original") -> dict:
         (scenes.get("04_hanger_back"), None, f"{title} — back hanger"),
         (scenes.get("01_closeup_back_male"), all_male or None, f"{title} — male closeup back"),
         (scenes.get("02_fullbody_back_male"), all_male or None, f"{title} — male fullbody back"),
+        # Proportional gpt-image-2 model scenes (Eurovision-style) — 8 photoreal
+        # outdoor shots, man+woman × close+full × front+back. Variant-linked so
+        # picking a Male/Female × Front/Back swaps the gallery to the matching
+        # photoreal scene (in addition to the TJ mockup + the close-up scenes
+        # above). Scene file naming differs from compose_marketing_scenes by
+        # design — see app/agents/eurovision_scenes.py.
+        (scenes.get("01_female_front_close"), groups[("female", "front")] or None, f"{title} — female front close"),
+        (scenes.get("02_female_front_full"),  groups[("female", "front")] or None, f"{title} — female front full"),
+        (scenes.get("03_male_front_close"),   groups[("male",   "front")] or None, f"{title} — male front close"),
+        (scenes.get("04_male_front_full"),    groups[("male",   "front")] or None, f"{title} — male front full"),
+        (scenes.get("01_female_back_close"),  groups[("female", "back")]  or None, f"{title} — female back close"),
+        (scenes.get("02_female_back_full"),   groups[("female", "back")]  or None, f"{title} — female back full"),
+        (scenes.get("03_male_back_close"),    groups[("male",   "back")]  or None, f"{title} — male back close"),
+        (scenes.get("04_male_back_full"),     groups[("male",   "back")]  or None, f"{title} — male back full"),
     ]
     uploaded = 0
     for path, vids, alt in upload_plan:

@@ -193,12 +193,31 @@ Available colors: Black, Navy Blue, Red, Royal Blue, Sport Grey, White (default:
 
 ### Upper-Back Placement (Konva reposition)
 
-Qstomizer is **Konva.js-based** (not fabric.js). After `.imagesubcontainer` click, the uploaded design auto-centers in the print area — which lands the print **mid-back**. Our marketing mockups show it at the upper back, so `customize_and_add_to_cart` / `fetch_mockup_from_qstomizer` / `_precache_mockups` default `vertical_offset=-0.25` (fraction of print-area height, negative = up toward collar). The reposition:
+Qstomizer is **Konva.js-based** (not fabric.js). After `.imagesubcontainer` click, the uploaded design auto-centers in the print area — which lands the print **mid-back**. Our marketing mockups show it at the upper back, so `customize_and_add_to_cart` / `fetch_mockup_from_qstomizer` / `_precache_mockups` apply offsets per `app/qstomizer_offsets.py::get_offsets(handle, gender, placement)` — defaults push the print up to upper-chest/back. The reposition:
 1. Scans `Konva.stages` for the active stage whose layer has `Group` nodes named `grupoimage*` (3 copies: preview + actual + ghost).
 2. Finds the print area (dashed `Rect` on that layer) — its height varies 236–300 px per tee view, so always measure with `rect.height()`.
 3. Uses `group.getClientRect({relativeTo: stage})` for **actual rendered bounds** (attr `width`/`height` misleads on tall multi-line designs).
-4. **Clamps** the upward delta so the design's rendered top stays inside the print area with a 4 px safety pad — tall 4-line designs like "NORMAL PEOPLE SCARE ME" (design_h ≈ 166) would otherwise clip into the collar.
+4. **Clamps** the upward delta with a configurable `vertical_safety_pad_px` (default `-30`, allowing the design to bleed 30 px above the print-area Rect on the mockup photo so tall designs reach upper-chest like small designs naturally do; positive values keep the design fully inside the Rect with that many px of pad).
 5. Fires `dragend` on each group so Qstomizer's internal save hook captures the new position (TJ prints from the stored position, not the rendered preview — without dragend, the mockup looks right but the actual print reverts to centered).
+
+### Per-Product Offset Overrides
+
+`app/qstomizer_offsets.py` is the **single source of truth** for placement offsets, used by all cart entry points (webhook + manual order in `main.py`, Mango's `_precache_mockups`, bulk-cart scripts). It exposes `get_offsets(handle, gender, placement) -> (v_offset, h_offset, safety_pad_px)`:
+
+- **Defaults** (all (gender, placement) combos): `v=-0.5, pad=-30` to land prints at upper-chest like dont-tempt-me's small design naturally does at `v=-0.25, pad=4`. Female front gets `h=+0.05` extra to compensate for the print-area-Rect left-bias on the female front view.
+- **Per-product overrides** for products that need different placement:
+  - `normal-people-scare-me-tee` (4-line tall, design_h=166): all combos `v=0, pad=4` (centered, no bleed); female_front uses `v=+0.10`.
+  - `told-her-shes-the-one-tee` (4-line tall, Black tee): all combos `v=0, pad=4`.
+  - `dont-tempt-me-ill-say-yes-tee` (small design_h=43, bold Impact): all combos `v=-0.25, pad=4`.
+  - `i-dont-get-drunk-i-get-awesome-tee` (wide single-line slogan): female_front `h=+0.02` (default `+0.05` clips "awesome").
+
+When adding a new product: defaults usually work. Add an override only when the print clips above the collar (use `v=0, pad=4`), off the right edge (reduce `h_offset`), or when a 4-line design needs centering instead of upward push.
+
+### Bulk Cart Creation — TJ Rate Limit
+
+Bulk runs of `customize_and_add_to_cart` (e.g. `scripts/create_all_carts.py`, `scripts/refresh_all_mockups.py`) **must throttle**. After ~48 carts in 50 min, Shopify's anti-abuse protection kicks in and `tshirtjunkies.co/cart.js` starts returning **503 Service Unavailable** with an HTML error page instead of cart JSON. Recovery takes 30+ min once activity stops.
+
+Throttle pattern: process **sequentially** (no `asyncio.gather` over the full task list), `await asyncio.sleep(5)` between calls, save results **incrementally** to disk so a mid-run rate-limit doesn't lose progress. Sanity-check `https://tshirtjunkies.co/cart.js` returns `200` + `text/javascript` **before** starting; if 503 + HTML, wait 30+ min before retrying. One-off carts (single webhook order, manual order) need no throttling.
 
 ### Color Selection Details
 
@@ -269,6 +288,7 @@ app/
   shopify_client.py      — Fetches products from any Shopify store
   cart_client.py         — TShirtJunkies cart operations
   qstomizer_automation.py — Playwright browser automation, cart permalink builder, shipping method mapping
+  qstomizer_offsets.py   — Single source of truth for placement offsets per (handle, gender, placement). Used by cart endpoints, Mango, scripts.
   email_service.py       — Async email notifications via aiosmtplib (includes shipping details block)
   email_parser.py        — Parse OMG order confirmation emails
   omg_fulfillment.py     — OMG Shopify Admin API: order lookup, fulfillment creation, OAuth token exchange
@@ -355,6 +375,7 @@ Detailed documentation for every subsystem is in `doc/`:
 | [agent4-translation-checker.md](doc/agent4-translation-checker.md) | Translation Checker agent (EN→GR via Claude) |
 | [marketing-photo-generation.md](doc/marketing-photo-generation.md) | Standalone gpt-image-1 scripts for slogan tee marketing photos + Qstomizer transparent PNG |
 | [design-replication-workflow.md](doc/design-replication-workflow.md) | 5-step end-to-end: confirm inputs → pick pipeline → render scenes → wire into mail_tj_mockups → send email |
+| [proportional-model-scenes.md](doc/proportional-model-scenes.md) | gpt-image-2 8-scene model-photo pipeline (man+woman × close+full × front+back). Wired into Mango approval flow + Option B retro-fit script (`scripts/regenerate_proportional_scenes.py`). |
 
 ## Testing
 
