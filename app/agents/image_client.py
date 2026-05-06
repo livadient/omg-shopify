@@ -114,9 +114,10 @@ async def generate_design(
         f"Style: {style}. "
         "IMPORTANT: This is ONLY the graphic/artwork/illustration itself — "
         "do NOT show a t-shirt, clothing, mannequin, or any garment. "
-        "Just the design artwork on a plain solid white background. "
-        "Requirements: solid white background, high contrast, clean sharp edges, "
-        "bold and eye-catching artwork suitable for screen printing. "
+        "Output: just the artwork on a fully transparent background — no "
+        "backdrop colour, no white box around the artwork, no fabric. "
+        "Requirements: high contrast, clean sharp edges, bold and "
+        "eye-catching artwork suitable for screen printing. "
         "No copyrighted characters or logos. Centered composition."
     )
 
@@ -125,13 +126,17 @@ async def generate_design(
                    "medium": "medium", "high": "high", "auto": "auto"}
     gpt_quality = quality_map.get(quality, "high")
 
-    logger.info(f"Generating design (gpt-image-1, {gpt_quality}): {concept[:80]}...")
+    logger.info(f"Generating design (gpt-image-1, {gpt_quality}, transparent): {concept[:80]}...")
 
+    # background="transparent" is gpt-image-1 native — replaces the old
+    # "white bg prompt + rembg strip" two-step. Saves ~1.5GB of image
+    # size (rembg + onnxruntime ML stack) and one async pipeline step.
     response = await client.images.generate(
         model="gpt-image-1",
         prompt=prompt,
         size=size,
         quality=gpt_quality,
+        background="transparent",
         n=1,
     )
 
@@ -503,28 +508,17 @@ async def generate_design_with_text_check(
 
 
 async def remove_background(image_path: Path) -> Path:
-    """Remove background from an image for print-ready transparent PNG.
+    """No-op pass-through (kept for backward compat with callers).
 
-    Uses rembg if available, otherwise returns the original image.
+    Up to 2026-05-06 this used rembg + onnxruntime to strip the white
+    background that the old generate_design produced. We now ask
+    gpt-image-1 for `background="transparent"` natively — no post-
+    processing needed — and `rembg[cpu]` was dropped from
+    requirements.txt to save ~1.5GB of Docker image size.
+
+    Callers still invoke this and check whether the returned path
+    differs from the input; we always return the input now, so any
+    `nobg_path != image_path` branch becomes a no-op (the image_path
+    is already a transparent PNG straight from gpt-image-1).
     """
-    try:
-        from rembg import remove
-        from PIL import Image
-        import io
-
-        input_img = Image.open(image_path)
-        output_img = remove(input_img)
-
-        output_path = image_path.with_name(
-            image_path.stem + "_nobg" + image_path.suffix
-        )
-        output_img.save(output_path, "PNG")
-        logger.info(f"Background removed: {output_path}")
-        return output_path
-
-    except (ImportError, SystemExit):
-        logger.warning("rembg not available (missing onnxruntime?), skipping background removal")
-        return image_path
-    except Exception as e:
-        logger.warning(f"Background removal failed: {e}, using original")
-        return image_path
+    return image_path

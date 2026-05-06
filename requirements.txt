@@ -22,7 +22,6 @@ pyngrok
 anthropic>=0.49.0
 openai>=1.60.0
 apscheduler>=3.10.0
-rembg[cpu]>=2.0.0
 google-api-python-client>=2.100.0
 google-auth>=2.25.0
 pytrends>=4.9.0
