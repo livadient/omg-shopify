@@ -35,10 +35,16 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PATH="/venv/bin:$PATH"
 
 # Runtime apt deps only (no build-essential, no apt cache).
+# `playwright install --with-deps` would normally apt-install these, but
+# we run `playwright install` as the non-root appuser so we list them
+# explicitly here. Missing any of these causes Chromium to launch and
+# immediately exit with "Target page, context or browser has been closed."
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libnss3 \
+    libnspr4 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
+    libatspi2.0-0 \
     libcups2 \
     libxdamage1 \
     libpango-1.0-0 \
@@ -48,6 +54,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrandr2 \
     libxcomposite1 \
     libxshmfence1 \
+    libxkbcommon0 \
+    libdbus-1-3 \
     fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
