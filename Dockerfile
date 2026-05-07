@@ -32,43 +32,30 @@ FROM python:3.13-slim
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
-    PATH="/venv/bin:$PATH"
+    PATH="/venv/bin:$PATH" \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Runtime apt deps only (no build-essential, no apt cache).
-# `playwright install --with-deps` would normally apt-install these, but
-# we run `playwright install` as the non-root appuser so we list them
-# explicitly here. Missing any of these causes Chromium to launch and
-# immediately exit with "Target page, context or browser has been closed."
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libatspi2.0-0 \
-    libcups2 \
-    libxdamage1 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libgbm1 \
-    libasound2 \
-    libxrandr2 \
-    libxcomposite1 \
-    libxshmfence1 \
-    libxkbcommon0 \
-    libdbus-1-3 \
-    fonts-liberation \
-    && rm -rf /var/lib/apt/lists/*
-
-# Bring in the prebuilt venv from the builder stage.
+# Bring in the prebuilt venv from the builder stage so the playwright CLI
+# is on PATH for the install step below.
 COPY --from=builder /venv /venv
 
-# Non-root user. Playwright caches browsers under $HOME so we run the
-# install AS appuser, not root.
+# Install Chromium AND its system deps via Playwright's canonical list
+# (`--with-deps`). Hand-maintaining the apt list bit us repeatedly:
+# every Playwright/Chromium upgrade adds another lib we forgot
+# (libnspr4, libatspi2.0-0, libxkbcommon0, libdbus-1-3, libxfixes3...).
+# Microsoft maintains the right list per OS version — defer to them.
+# Browsers go to a system path (/ms-playwright) so the non-root appuser
+# can read them after the chown below.
+RUN apt-get update \
+    && playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
+# Non-root user. Give appuser ownership of the browser cache.
 RUN useradd --create-home appuser \
     && mkdir -p /home/appuser/.u2net \
-    && chown appuser:appuser /home/appuser/.u2net
+    && chown appuser:appuser /home/appuser/.u2net \
+    && chown -R appuser:appuser /ms-playwright
 USER appuser
-RUN playwright install chromium
 
 WORKDIR /project
 COPY --chown=appuser:appuser . /project
