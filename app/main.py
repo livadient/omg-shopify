@@ -1854,7 +1854,7 @@ async def shopify_auth_start():
     domain = settings.omg_shopify_domain
     if not domain.endswith(".myshopify.com"):
         domain = "52922c-2.myshopify.com"
-    scopes = "read_orders,write_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,read_products,write_products,read_customers,write_customers,read_inventory,write_inventory,read_locations,read_shipping,write_shipping,read_order_edits,write_order_edits,read_content,write_content,read_translations,write_translations,read_locales,write_locales,read_markets,write_markets,read_script_tags,write_script_tags"
+    scopes = "read_orders,write_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,read_products,write_products,read_customers,write_customers,read_inventory,write_inventory,read_locations,read_shipping,write_shipping,read_order_edits,write_order_edits,read_content,write_content,read_translations,write_translations,read_locales,write_locales,read_markets,write_markets,read_script_tags,write_script_tags,read_discounts,write_discounts,read_price_rules,write_price_rules"
     redirect_uri = "http://localhost:8080/shopify-auth/callback"
     auth_url = (
         f"https://{domain}/admin/oauth/authorize"
