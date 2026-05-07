@@ -42,6 +42,84 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 DEFAULT_IMAGE = STATIC_DIR / "front_design.png"
 
 
+async def _select_size_in_scope(qf, size: str, scope_selector: str | None,
+                                timeout_ms: int = 10000) -> dict:
+    """Self-locating size picker.
+
+    Why: Qstomizer's size dropdown lives at a different DOM index per
+    product (#variantValues1 on the men's classic tee, #variantValues0 on
+    the women's tee). Hardcoding the index broke order #1054 (Female /
+    XL → women-t-shirt). Instead we scan every <select> in `scope_selector`
+    (or the whole iframe doc if None) and pick the one whose options
+    actually contain the requested size, matching by label, value,
+    trimmed text, or word-prefix (covers decorated labels like
+    "XL — €18.95").
+
+    Returns {"ok": True, "select_id", "value", "matched"} on success, or
+    {"ok": False, "selects": [...]} dumping every dropdown's options so
+    the caller can log what was actually on the page.
+    """
+    target_arg = json.dumps(size)
+    scope_arg = json.dumps(scope_selector) if scope_selector else "null"
+    js = f"""
+        () => {{
+            const target = {target_arg};
+            const scopeSel = {scope_arg};
+            const root = scopeSel ? document.querySelector(scopeSel) : document;
+            if (!root) return {{ok: false, error: 'scope_not_found', scope: scopeSel}};
+            const selects = Array.from(root.querySelectorAll('select'));
+            const tryPick = (matcher, tag) => {{
+                for (const sel of selects) {{
+                    for (const opt of sel.options) {{
+                        if (matcher(opt)) {{
+                            sel.value = opt.value;
+                            sel.dispatchEvent(new Event('change', {{bubbles: true}}));
+                            if (typeof jQuery !== 'undefined') {{
+                                jQuery(sel).trigger('change');
+                            }}
+                            return {{ok: true, select_id: sel.id, name: sel.name,
+                                    value: opt.value, matched: tag,
+                                    text: (opt.textContent || '').trim()}};
+                        }}
+                    }}
+                }}
+                return null;
+            }};
+            const norm = (s) => (s || '').trim();
+            // 1) Exact label/value/text match
+            let r = tryPick(o => norm(o.label) === target
+                              || norm(o.value) === target
+                              || norm(o.textContent) === target, 'exact');
+            if (r) return r;
+            // 2) Word-boundary prefix (e.g. "XL — €18.95")
+            const wordRe = new RegExp('^' + target.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&') + '\\\\b');
+            r = tryPick(o => wordRe.test(norm(o.textContent)), 'word_prefix');
+            if (r) return r;
+            const dump = selects.map(sel => ({{
+                id: sel.id, name: sel.name,
+                options: Array.from(sel.options).map(o => ({{
+                    label: o.label, value: o.value,
+                    text: (o.textContent || '').trim()
+                }}))
+            }}));
+            return {{ok: false, target: target, selects: dump}};
+        }}
+    """
+    poll_ms = 500
+    elapsed = 0
+    result = {"ok": False, "error": "no_result"}
+    while elapsed < timeout_ms:
+        result = await qf.evaluate(js)
+        if result.get("ok"):
+            return result
+        # Definitive miss: dropdown(s) loaded but size not in any of them.
+        if result.get("selects"):
+            return result
+        await asyncio.sleep(poll_ms / 1000)
+        elapsed += poll_ms
+    return result
+
+
 def _run_playwright_in_thread(coro_func, *args, **kwargs):
     """Run an async Playwright function in a separate thread with ProactorEventLoop.
 
@@ -198,12 +276,18 @@ async def _customize_and_add_to_cart_impl(
         # Wait for canvas to update with the new color
         await page.wait_for_timeout(5000)
 
-        # Select size in the variations window dropdown
+        # Select size in the variations window dropdown.
+        # Self-locating instead of hardcoded #variantValues1 — the dropdown
+        # index varies between men's and women's tee Qstomizer pages.
         print(f"Selecting size: {size}")
-        size_select = await qf.query_selector("#qsmzVariationsWindow #variantValues1")
-        if size_select:
-            await size_select.select_option(label=size)
+        size_pick = await _select_size_in_scope(qf, size, "#qsmzVariationsWindow")
+        if size_pick.get("ok"):
+            print(f"  Picked size in #{size_pick.get('select_id')}: "
+                  f"value={size_pick.get('value')} match={size_pick.get('matched')}")
             await page.wait_for_timeout(500)
+        else:
+            print(f"  Size not found in variations window. Dropdown dump: "
+                  f"{json.dumps(size_pick.get('selects', []))[:500]}")
 
         # Click OK to confirm color/size selection
         print("Clicking OK...")
@@ -369,11 +453,17 @@ async def _customize_and_add_to_cart_impl(
             await page.wait_for_timeout(1500)
 
         # --- Step 3: Select size via the variant dropdown ---
+        # Self-locating: scan all <select>s in the iframe and pick the one
+        # whose options contain the requested size.
         print(f"Selecting size: {size}")
-        size_select = await qf.query_selector("#variantValues1")
-        if size_select:
-            await size_select.select_option(label=size)
+        size_pick = await _select_size_in_scope(qf, size, scope_selector=None)
+        if size_pick.get("ok"):
+            print(f"  Picked size in #{size_pick.get('select_id')}: "
+                  f"value={size_pick.get('value')} match={size_pick.get('matched')}")
             await page.wait_for_timeout(500)
+        else:
+            print(f"  Size dropdown miss. Dump: "
+                  f"{json.dumps(size_pick.get('selects', []))[:500]}")
 
         # --- Step 4: Click ORDER NOW ---
         print("Clicking ORDER NOW...")
