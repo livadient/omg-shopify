@@ -27,3 +27,4 @@ google-auth>=2.25.0
 pytrends>=4.9.0
 google-ads>=25.0.0
 python-multipart>=0.0.9
+Pillow>=10.0.0
